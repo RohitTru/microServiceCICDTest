@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:6.2
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  app1:
+    build:
+      context: ./app1
+    ports:
+      - "5004:5004"
+    depends_on:
+      - redis
+
+  app2:
+    build:
+      context: ./app2
+    ports:
+      - "5005:5005"
+    depends_on:
+      - redis
