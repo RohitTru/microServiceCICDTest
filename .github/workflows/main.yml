@@ -19,26 +19,26 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # 3️ Build Docker images for app1 and app2
+      # 3️ Build Docker images for app1 and app2 (lowercase names)
       - name: Build Docker images
         run: |
-          docker build -t microServiceCICDTest_app1:latest ./app1
-          docker build -t microServiceCICDTest_app2:latest ./app2
+          docker build -t microservicecicdtest_app1:latest ./app1
+          docker build -t microservicecicdtest_app2:latest ./app2
 
-      # 4️ Run the containers for testing (optional but recommended)
+      # 4️ Run the containers for testing
       - name: Run containers for testing
         run: | 
-          docker run -d --name app1 -p 5004:5004 microServiceCICDTest_app1:latest
-          docker run -d --name app2 -p 5005:5005 microServiceCICDTest_app2:latest
+          docker run -d --name app1 -p 5004:5004 microservicecicdtest_app1:latest
+          docker run -d --name app2 -p 5005:5005 microservicecicdtest_app2:latest
 
-      # 5️ Test if the containers are running (simple health check)
+      # 5️ Test if the containers are running (health check)
       - name: Test application endpoints
         run: |
           sleep 10
           curl --fail http://localhost:5004 || exit 1
           curl --fail http://localhost:5005 || exit 1
 
-      # 6️ Stop and clean up containers (preventing resource leaks)
+      # 6️ Stop and clean up containers
       - name: Stop and remove containers
         run: |
           docker stop app1 app2
