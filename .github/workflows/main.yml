@@ -3,7 +3,7 @@ name: Build & Deploy microServiceCICDTest
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   build-deploy:
