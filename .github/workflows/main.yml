@@ -11,28 +11,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️ Checkout code
+      # 1️. Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️ Set up Docker Buildx
+      # 2️. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # 3️ Build Docker images for app1 and app2 (lowercase names)
+      # 3️. Build Docker images for app1 and app2 (lowercase names)
       - name: Build Docker images
         run: |
           docker build -t microservicecicdtest_app1:latest ./app1
           docker build -t microservicecicdtest_app2:latest ./app2
 
-      # 4️ Run the containers for testing
+      # 4️. Create Docker network (if not exists)
+      - name: Create Docker network
+        run: |
+          docker network inspect app-network || docker network create app-network
+
+      # 5️. Run containers using Docker Compose (network defined in docker-compose.yml)
       - name: Run containers for testing
-        run: | 
-          docker run -d --name app1 -p 5004:5004 microservicecicdtest_app1:latest
-          docker run -d --name app2 -p 5005:5005 microservicecicdtest_app2:latest
+        run: |
+          docker-compose up -d
 
+      # 6️. Inspect Docker network (debugging)
+      - name: Inspect Docker Network
+        run: |
+          echo "Docker Network Details:"
+          docker network inspect app-network
 
-      # 5 output docker container log
+      # 7️. Check Docker container logs (for errors)
       - name: Check Docker container logs
         run: |
           echo "App1 logs:"
@@ -40,18 +49,16 @@ jobs:
           echo "App2 logs:"
           docker logs app2 || true
 
-      # 6 Test if the containers are running (health check [end point test])
+      # 8️. Test if the containers are running (health checks)
       - name: Test application endpoints
         run: |
-          sleep 20
+          sleep 30  # Give containers enough time to start
           echo "Checking App1 health..."
           curl --fail http://app1:5004/health || exit 1
           echo "Checking App2 health..."
           curl --fail http://app2:5005/health || exit 1
-    
 
-      # 7 Stop and clean up containers
+      # 9️. Stop and clean up containers after testing
       - name: Stop and remove containers
         run: |
-          docker stop app1 app2
-          docker rm app1 app2
+          docker-compose down
