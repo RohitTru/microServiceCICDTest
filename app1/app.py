@@ -12,6 +12,9 @@ form_template = """
 </form>
 <p>{{ feedback }}</p>
 """
+@app.route('/health', methods=['GET'])
+def health():
+    return "OK", 200
 
 @app.route("/", methods=["GET", "POST"])
 def index():
