@@ -30,8 +30,7 @@ jobs:
         run: |
           docker network inspect app-network || docker network create app-network
 
-      # 5️. Run containers using Docker Compose (network defined in docker-compose.yml)
-      # 5️. Run containers using Docker Compose (with app-network)
+      # 5️. Run containers using Docker Compose
       - name: Run containers for testing
         run: |
           docker compose up -d
@@ -55,9 +54,9 @@ jobs:
         run: |
           sleep 30
           echo "Checking App1 health..."
-          curl --fail http://172.18.0.2:5004/health || exit 1
+          curl --fail http://127.0.0.1:5004/health || exit 1
           echo "Checking App2 health..."
-          curl --fail http://172.18.0.3:5005/health || exit 1
+          curl --fail http://127.0.0.1:5005/health || exit 1
 
       # 9️. Stop and clean up containers after testing
       - name: Stop and remove containers
