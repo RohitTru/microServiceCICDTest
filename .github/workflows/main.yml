@@ -1,0 +1,54 @@
+name: Build & Deploy microServiceCICDTest 
+
+on:
+    push:
+      branches:
+        - main
+
+jobs:
+    build-deploy:
+        name: Build and deploy microServiceCICDTest
+        runs-on: Ubuntu-latest
+        
+        steps:
+          # 1 Checkout code
+           - name: Checkout code
+             uses: actions/checkout@v4
+          
+          # 2 Set up Docker (this is usually pre-installed on github runner but is good practice)
+           - name: Set up Docker Buildx
+             uses: docker/setup-buildx-actions@v2
+
+          # 3 Build Docker images for app1 and app2
+           - name: Build Docker images
+             run: |
+                docker build -t microServiceCICDTest_app1:latest ./app1
+                docker build -t microServiceCICDTest_app2:latest ./app2
+          
+          # 4 Run the containers for testing (optional but recommended)
+           - name: Run containers for testing
+             run: | 
+                docker run -d --name app1 -p 5004:5004 microServiceCICDTest_app1:latest
+                docker run -d --name app2 -p 5005:5005 microServiceCICDTest_app2:latest
+          
+          # 5 Test if the containers are running (simple health check)
+           - name: Test application endpoints
+             run: |
+              sleep 10
+              curl --fail http://localhost:5004 || exit 1
+              curl --fail http://localhost:5005 || exit 1
+
+          # 6 stop and clean up containers (preventing resource leaks)
+           - name: Stop and remove containers
+             run: |
+                docker stop app1 app2
+                docker rm app1 app2
+
+
+
+            
+              
+
+
+            
+
