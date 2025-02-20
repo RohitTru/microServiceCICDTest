@@ -43,11 +43,12 @@ jobs:
       # 6 Test if the containers are running (health check [end point test])
       - name: Test application endpoints
         run: |
-          sleep 10
+          sleep 20
           echo "Checking App1 health..."
-          curl --fail http://localhost:5004 || exit 1
+          curl --fail http://app1:5004/health || exit 1
           echo "Checking App2 health..."
-          curl --fail http://localhost:5005 || exit 1
+          curl --fail http://app2:5005/health || exit 1
+    
 
       # 7 Stop and clean up containers
       - name: Stop and remove containers
