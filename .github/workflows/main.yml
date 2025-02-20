@@ -61,4 +61,4 @@ jobs:
       # 9️. Stop and clean up containers after testing
       - name: Stop and remove containers
         run: |
-          docker-compose down
+          docker compose down
