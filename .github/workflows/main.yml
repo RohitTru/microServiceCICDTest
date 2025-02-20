@@ -31,9 +31,13 @@ jobs:
           docker network inspect app-network || docker network create app-network
 
       # 5️. Run containers using Docker Compose (network defined in docker-compose.yml)
+      # 5️. Run containers using Docker Compose (with app-network)
       - name: Run containers for testing
         run: |
-          docker compose up -d
+          docker network create app-network || true
+          docker run -d --name app1 --network app-network -p 5004:5004 microservicecicdtest_app1:latest
+          docker run -d --name app2 --network app-network -p 5005:5005 microservicecicdtest_app2:latest
+
 
       # 6️. Inspect Docker network (debugging)
       - name: Inspect Docker Network
@@ -52,11 +56,12 @@ jobs:
       # 8️. Test if the containers are running (health checks)
       - name: Test application endpoints
         run: |
-          sleep 30  # Give containers enough time to start
+          sleep 30
           echo "Checking App1 health..."
           curl --fail http://app1:5004/health || exit 1
           echo "Checking App2 health..."
           curl --fail http://app2:5005/health || exit 1
+
 
       # 9️. Stop and clean up containers after testing
       - name: Stop and remove containers
