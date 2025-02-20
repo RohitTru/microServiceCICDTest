@@ -31,14 +31,25 @@ jobs:
           docker run -d --name app1 -p 5004:5004 microservicecicdtest_app1:latest
           docker run -d --name app2 -p 5005:5005 microservicecicdtest_app2:latest
 
-      # 5️ Test if the containers are running (health check)
+
+      # 5 output docker container log
+      - name: Check Docker container logs
+        run: |
+          echo "App1 logs:"
+          docker logs app1 || true
+          echo "App2 logs:"
+          docker logs app2 || true
+
+      # 6 Test if the containers are running (health check [end point test])
       - name: Test application endpoints
         run: |
           sleep 10
+          echo "Checking App1 health..."
           curl --fail http://localhost:5004 || exit 1
+          echo "Checking App2 health..."
           curl --fail http://localhost:5005 || exit 1
 
-      # 6️ Stop and clean up containers
+      # 7 Stop and clean up containers
       - name: Stop and remove containers
         run: |
           docker stop app1 app2
