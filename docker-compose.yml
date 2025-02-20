@@ -1,12 +1,10 @@
 version: '3.8'
 
-# Define custom Docker network
 networks:
   app-network:
     driver: bridge
 
 services:
-  # Redis service
   redis:
     image: redis:6.2
     container_name: redis
@@ -15,7 +13,6 @@ services:
     networks:
       - app-network
 
-  # App1 service
   app1:
     build:
       context: ./app1
@@ -26,11 +23,7 @@ services:
       - redis
     networks:
       - app-network
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
 
-  # App2 service
   app2:
     build:
       context: ./app2
@@ -41,6 +34,3 @@ services:
       - redis
     networks:
       - app-network
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
