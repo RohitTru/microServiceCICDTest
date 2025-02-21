@@ -75,8 +75,8 @@ jobs:
       # 12. Ensure images exist before tagging
       - name: Verify images exist
         run: |
-          docker images | grep microservicecicdtest_app1 || exit 1
-          docker images | grep microservicecicdtest_app2 || exit 1
+          docker images | grep "microservicecicdtest_app1" || (echo "App1 image not found!" && docker images && exit 1)
+          docker images | grep "microservicecicdtest_app2" || (echo "App2 image not found!" && docker images && exit 1)
 
       # 13. Tag Docker images with both timestamp and 'latest' tags
       - name: Tag Docker images

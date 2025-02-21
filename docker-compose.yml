@@ -14,6 +14,7 @@ services:
       - app-network
 
   app1:
+    image: microservicecicdtest_app1:latest  # Explicitly tag the image
     build:
       context: ./app1
     container_name: app1
@@ -25,6 +26,7 @@ services:
       - app-network
 
   app2:
+    image: microservicecicdtest_app2:latest  # Explicitly tag the image
     build:
       context: ./app2
     container_name: app2
