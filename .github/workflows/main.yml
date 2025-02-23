@@ -1,99 +1,49 @@
-name: Build & Deploy microServiceCICDTest
+name: Build & Deploy Feature Apps
 
 on:
   push:
     branches:
-      - master
+      - "feature-*"
 
 jobs:
-  build-deploy:
-    name: Build and Deploy Microservice App
+  build-feature-app:
+    name: Build & Deploy Feature App
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout source code from the repository
+      # 1. Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Set up Docker Buildx for multi-platform builds
+      # 2. Extract Branch Name
+      - name: Extract Branch Name
+        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
+      # 3. Create App Folder from Template
+      - name: Create App from Template
+        run: |
+          if [ ! -d "./${{ env.BRANCH_NAME }}" ]; then
+            cp -r ./app-template ./${{ env.BRANCH_NAME }}
+          fi
+
+      # 4. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # 3. Log in to Docker Hub using secrets
+      # 5. Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # 4. Get current timestamp for image tagging
-      - name: Get current timestamp
-        id: timestamp
-        run: echo "timestamp=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
-
-      # 5. Build Docker images using Docker Compose (with BuildKit enabled)
-      - name: Build Docker images
+      # 6. Build Docker Image
+      - name: Build Docker Image
         run: |
-          DOCKER_BUILDKIT=1 docker compose -f docker-compose.yml build \
-            --build-arg BUILD_TIMESTAMP=${{ env.timestamp }}
+          docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_${{ env.BRANCH_NAME }}:latest \
+          --build-arg BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M%S') ./${{ env.BRANCH_NAME }}
 
-      # 6. Create Docker network for container communication
-      - name: Create Docker network (if not exists)
+      # 7. Push Image to Docker Hub
+      - name: Push Docker Image to Docker Hub
         run: |
-          docker network inspect app-network || docker network create app-network
-
-      # 7. Run containers for testing using Docker Compose
-      - name: Run containers for testing
-        run: |
-          docker compose up -d
-
-      # 8. Inspect Docker network for debugging
-      - name: Inspect Docker network
-        run: docker network inspect app-network
-
-      # 9. Check Docker container logs for potential errors
-      - name: Check Docker container logs
-        run: |
-          echo "App1 logs:"
-          docker logs app1 || true
-          echo "App2 logs:"
-          docker logs app2 || true
-
-      # 10. Health check for application endpoints (after a longer wait time)
-      - name: Test application endpoints
-        run: |
-          sleep 15
-          echo "Checking App1 health..."
-          curl --fail http://127.0.0.1:5004/health || exit 1
-          echo "Checking App2 health..."
-          curl --fail http://127.0.0.1:5005/health || exit 1
-
-      # 11. Stop and clean up containers after testing
-      - name: Stop and remove containers
-        run: docker compose down
-
-      # 12. Ensure images exist before tagging
-      - name: Verify images exist
-        run: |
-          docker images | grep "microservicecicdtest_app1" || (echo "App1 image not found!" && docker images && exit 1)
-          docker images | grep "microservicecicdtest_app2" || (echo "App2 image not found!" && docker images && exit 1)
-
-      # 13. Tag Docker images with both timestamp and 'latest' tags
-      - name: Tag Docker images
-        run: |
-          docker tag microservicecicdtest_app1:latest ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app1:${{ env.timestamp }}
-          docker tag microservicecicdtest_app2:latest ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app2:${{ env.timestamp }}
-          docker tag microservicecicdtest_app1:latest ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app1:latest
-          docker tag microservicecicdtest_app2:latest ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app2:latest
-
-      # 14. Push Docker images to Docker Hub (only after successful tests)
-      - name: Push Docker images to Docker Hub
-        run: |
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app1:${{ env.timestamp }}
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app2:${{ env.timestamp }}
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app1:latest
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_app2:latest
-
-      # 15. Clean up unused Docker resources
-      - name: Clean up Docker artifacts
-        run: docker system prune -af
+          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
