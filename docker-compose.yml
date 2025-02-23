@@ -15,7 +15,7 @@ services:
     networks:
       - app-network
 
-  ${APP_NAME}:
+  app:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
     pull_policy: always   # Ensure Docker always pulls the latest image
     container_name: "${APP_NAME:-default-app}"
