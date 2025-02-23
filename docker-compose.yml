@@ -15,12 +15,13 @@ services:
       - app-network
 
   app:
-    image: "${APP_IMAGE:-rohittru/microservicecicdtest_${APP_NAME}:latest}"
+    image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
     container_name: "${APP_NAME:-default-app}"
     ports:
       - "${APP_PORT:-5004}:${APP_PORT:-5004}"
     environment:
       - SERVICE_NAME=${APP_NAME:-default-app}
+      - APP_PORT=${APP_PORT:-5004} 
     depends_on:
       - redis
     networks:
