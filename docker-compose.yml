@@ -15,17 +15,17 @@ services:
     networks:
       - app-network
 
-  app:
+  ${APP_NAME}:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
     container_name: "${APP_NAME:-default-app}"
     restart: always
+    env_file:
+      - ./${APP_NAME}/.env
     ports:
       - "${APP_PORT:-5004}:${APP_PORT:-5004}"
     environment:
-      - SERVICE_NAME=${APP_NAME:-default-app}
-      - APP_PORT=${APP_PORT:-5004}
-      - VIRTUAL_HOST=${APP_NAME}.emerginary.com   
-      - VIRTUAL_PORT=${APP_PORT:-5004}            
+      - VIRTUAL_HOST=${APP_NAME}.emerginary.com
+      - VIRTUAL_PORT=${APP_PORT:-5004}
     depends_on:
       - redis
     networks:
@@ -39,9 +39,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock:ro  
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro        
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
     environment:
-      - DEFAULT_HOST=default.emerginary.com        
+      - DEFAULT_HOST=default.emerginary.com
     networks:
-      - app-network                                
+      - app-network
