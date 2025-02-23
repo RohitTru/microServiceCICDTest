@@ -15,44 +15,59 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Extract Branch Name
+      # 2. Ensure Docker Network Exists
+      - name: Ensure Docker Network Exists
+        run: |
+          docker network inspect app-network || docker network create app-network
+
+      # 3. Extract Branch Name
       - name: Extract Branch Name
         run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
 
-      # 3. Create App Folder from Template
+      # 4. Create App Folder from Template
       - name: Create App from Template
         run: |
           if [ ! -d "./${{ env.BRANCH_NAME }}" ]; then
             cp -r ./app-template ./${{ env.BRANCH_NAME }}
           fi
 
-      # 4. Commit and Push App Folder to GitHub
+      # 5. Generate .env from Template
+      - name: Generate .env from Template
+        run: |
+          cp ./app-template/microservice-env-template.env ./${{ env.BRANCH_NAME }}/.env
+          sed -i "s/your-app-name/${{ env.BRANCH_NAME }}/g" ./${{ env.BRANCH_NAME }}/.env
+          sed -i "s|your-docker-image|rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest|g" ./${{ env.BRANCH_NAME }}/.env
+          sed -i "s/5000/$((5000 + RANDOM % 1000))/g" ./${{ env.BRANCH_NAME }}/.env
+          echo "Generated .env file:"
+          cat ./${{ env.BRANCH_NAME }}/.env
+
+      # 6. Commit and Push App Folder to GitHub
       - name: Commit and Push App Folder to GitHub
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
           git add ${{ env.BRANCH_NAME }}/
-          git commit -m "Add generated app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git commit -m "Add generated app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
-      # 5. Set up Docker Buildx
+      # 7. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # 6. Log in to Docker Hub
+      # 8. Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # 7. Build Docker Image
+      # 9. Build Docker Image
       - name: Build Docker Image
         run: |
           docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_${{ env.BRANCH_NAME }}:latest \
           --build-arg BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M%S') ./${{ env.BRANCH_NAME }}
 
-      # 8. Push Image to Docker Hub
+      # 10. Push Image to Docker Hub
       - name: Push Docker Image to Docker Hub
         run: |
           docker push ${{ secrets.DOCKER_HUB_USERNAME }}/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
