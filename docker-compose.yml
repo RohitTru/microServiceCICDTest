@@ -17,11 +17,11 @@ services:
 
   app:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
-    pull_policy: always   # Ensure Docker always pulls the latest image
+    pull_policy: always
     container_name: "${APP_NAME:-default-app}"
     restart: always
     env_file:
-      - "./${APP_NAME}/.env"
+      - "${APP_NAME:-default-app}/.env"  # Dynamically loads the correct env
     ports:
       - "${APP_PORT:-5004}:${APP_PORT:-5004}"
     environment:
