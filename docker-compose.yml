@@ -3,6 +3,7 @@ version: '3.8'
 networks:
   app-network:
     driver: bridge
+    external: true
 
 services:
   redis:
@@ -13,25 +14,13 @@ services:
     networks:
       - app-network
 
-  app1:
-    image: microservicecicdtest_app1:latest  # Explicitly tag the image
-    build:
-      context: ./app1
-    container_name: app1
+  app:
+    image: "${APP_IMAGE:-rohittru/microservicecicdtest_${APP_NAME}:latest}"
+    container_name: "${APP_NAME:-default-app}"
     ports:
-      - "5004:5004"
-    depends_on:
-      - redis
-    networks:
-      - app-network
-
-  app2:
-    image: microservicecicdtest_app2:latest  # Explicitly tag the image
-    build:
-      context: ./app2
-    container_name: app2
-    ports:
-      - "5005:5005"
+      - "${APP_PORT:-5004}:${APP_PORT:-5004}"
+    environment:
+      - SERVICE_NAME=${APP_NAME:-default-app}
     depends_on:
       - redis
     networks:
