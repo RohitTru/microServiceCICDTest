@@ -17,6 +17,7 @@ services:
 
   ${APP_NAME}:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
+    pull_policy: always   # Ensure Docker always pulls the latest image
     container_name: "${APP_NAME:-default-app}"
     restart: always
     env_file:
