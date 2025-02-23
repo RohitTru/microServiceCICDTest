@@ -31,6 +31,7 @@ jobs:
           if [ ! -d "./${{ env.BRANCH_NAME }}" ]; then
             echo "Creating app folder for ${{ env.BRANCH_NAME }}"
             cp -r ./app-template ./${{ env.BRANCH_NAME }}
+            find ./${{ env.BRANCH_NAME }} -name 'microservice-env-template.env' -delete  # Remove template after copying
           else
             echo "App folder already exists."
           fi
