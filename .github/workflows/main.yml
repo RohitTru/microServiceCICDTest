@@ -32,13 +32,13 @@ jobs:
           fi
 
       # 5. Generate .env from Template
-      - name: Generate .env from Template
+      - name: Generate .env for Feature App
         run: |
-          cp ./app-template/microservice-env-template.env ./${{ env.BRANCH_NAME }}/.env
-          sed -i "s/your-app-name/${{ env.BRANCH_NAME }}/g" ./${{ env.BRANCH_NAME }}/.env
-          sed -i "s|your-docker-image|rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest|g" ./${{ env.BRANCH_NAME }}/.env
-          sed -i "s/5000/$((5000 + RANDOM % 1000))/g" ./${{ env.BRANCH_NAME }}/.env
-          echo "Generated .env file:"
+          echo "APP_NAME=${{ env.BRANCH_NAME }}" > ./${{ env.BRANCH_NAME }}/.env
+          echo "APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest" >> ./${{ env.BRANCH_NAME }}/.env
+          echo "APP_PORT=$((5000 + RANDOM % 1000))" >> ./${{ env.BRANCH_NAME }}/.env
+          echo "REDIS_HOST=redis" >> ./${{ env.BRANCH_NAME }}/.env
+          echo "Generated .env file for ${{ env.BRANCH_NAME }}:"
           cat ./${{ env.BRANCH_NAME }}/.env
 
       # 6. Commit and Push App Folder to GitHub
@@ -46,8 +46,8 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add ${{ env.BRANCH_NAME }}/
-          git commit -m "Add generated app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git add ${{ env.BRANCH_NAME }}/.env
+          git commit -m "Add generated .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
       # 7. Set up Docker Buildx
