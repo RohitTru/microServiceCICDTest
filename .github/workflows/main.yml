@@ -60,8 +60,8 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add .
-          git commit -m "Add app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git add "./${{ env.BRANCH_NAME }}/.env"  # Only add the .env file
+          git commit -m "Add .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
       # 6. Log in to Docker Hub
@@ -82,10 +82,11 @@ jobs:
         run: |
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
 
-# Remove Sandbox when Branch is Deleted
+  # Remove Sandbox when Branch is Deleted
   cleanup:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
+
     steps:
       # 1. Log in to Docker Hub
       - name: Log in to Docker Hub
@@ -125,7 +126,15 @@ jobs:
 
           echo "Cleanup completed for ${{ env.BRANCH_NAME }}"
 
-      # 4. Conditionally Remove Docker Network
+      # 4. Remove App Folder
+      - name: Clean Up App Folder
+        run: |
+          if [ -d "./${{ env.BRANCH_NAME }}" ]; then
+            echo "Removing app folder for ${{ env.BRANCH_NAME }}"
+            rm -rf "./${{ env.BRANCH_NAME }}"
+          fi
+
+      # 5. Conditionally Remove Docker Network
       - name: Remove Docker Network (if unused)
         run: |
           if [ -z "$(docker ps -q -f network=app-network)" ]; then
@@ -134,4 +143,3 @@ jobs:
           else
             echo "Containers are still using app-network. Skipping removal."
           fi
-
