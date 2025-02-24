@@ -87,10 +87,41 @@ jobs:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
     steps:
+      # 1. Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      # 2. Extract Branch Name
+      - name: Extract Branch Name
+        run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
+
+      # 3. Remove Docker Image and Sandbox
       - name: Remove Docker Image and Sandbox
         run: |
-          BRANCH_NAME=${{ github.event.ref }}
-          echo "Cleaning up sandbox for $BRANCH_NAME"
-          docker rm -f ${BRANCH_NAME} || true
-          docker rmi rohittru/microservicecicdtest_${BRANCH_NAME}:latest || true
-          docker network rm app-network || true
+          echo "Cleaning up sandbox for ${{ env.BRANCH_NAME }}"
+
+          # Remove the running container if it exists
+          docker rm -f ${{ env.BRANCH_NAME }} || true
+
+          # Remove the Docker image locally
+          docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
+
+          # Remove the image from Docker Hub
+          curl -s -X DELETE \
+            -u "${{ secrets.DOCKER_HUB_USERNAME }}:${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" \
+            "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
+
+          echo "Cleanup completed for ${{ env.BRANCH_NAME }}"
+
+      # 4. Conditionally Remove Docker Network
+      - name: Remove Docker Network (if unused)
+        run: |
+          if [ -z "$(docker ps -q -f network=app-network)" ]; then
+            echo "No containers using app-network. Removing it..."
+            docker network rm app-network || true
+          else
+            echo "Containers are still using app-network. Skipping removal."
+          fi
