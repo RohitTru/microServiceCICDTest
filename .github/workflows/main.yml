@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          clean: true  # Ensure a clean working directory
 
       - name: Ensure Docker Network Exists
         run: |
@@ -24,15 +26,11 @@ jobs:
           fi
 
       - name: Extract Branch Name
-        run: |
-          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}")
-          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
-          echo "Extracted branch name: $BRANCH_NAME"
+        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
 
       - name: Create App Folder and .env
         run: |
-          echo "Creating app folder for ${{ env.BRANCH_NAME }}"
-          mkdir -p "./${{ env.BRANCH_NAME }}"
+          mkdir -p "${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
@@ -41,14 +39,6 @@ jobs:
           APP_PORT=$((5000 + RANDOM % 1000))
           REDIS_HOST=redis
           EOF
-
-      - name: Commit and Push App Folder and .env to GitHub
-        run: |
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git add -f "./${{ env.BRANCH_NAME }}"
-          git commit -m "Add app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-          git push origin HEAD:${{ env.BRANCH_NAME }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -75,6 +65,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          clean: true  # Ensure a clean working directory
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
@@ -83,10 +75,7 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Extract Branch Name
-        run: |
-          BRANCH_NAME=$(echo "${{ github.event.ref }}" | sed 's/refs\/heads\///')
-          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
-          echo "Extracted branch name for cleanup: $BRANCH_NAME"
+        run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
 
       - name: Remove Docker Resources
         run: |
