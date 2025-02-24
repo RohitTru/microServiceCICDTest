@@ -24,11 +24,15 @@ jobs:
           fi
 
       - name: Extract Branch Name
-        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}")
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "Extracted branch name: $BRANCH_NAME"
 
       - name: Create App Folder and .env
         run: |
-          mkdir -p "${{ env.BRANCH_NAME }}"
+          echo "Creating app folder for ${{ env.BRANCH_NAME }}"
+          mkdir -p "./${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
@@ -42,7 +46,7 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add -f "${{ env.BRANCH_NAME }}" # Force add the folder despite .gitignore
+          git add -f "./${{ env.BRANCH_NAME }}"
           git commit -m "Add app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
@@ -79,7 +83,10 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Extract Branch Name
-        run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
+        run: |
+          BRANCH_NAME=$(echo "${{ github.event.ref }}" | sed 's/refs\/heads\///')
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "Extracted branch name for cleanup: $BRANCH_NAME"
 
       - name: Remove Docker Resources
         run: |
