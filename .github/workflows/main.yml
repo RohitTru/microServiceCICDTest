@@ -37,14 +37,11 @@ jobs:
         run: |
           echo "Creating app folder for ${{ env.BRANCH_NAME }}"
           if [ ! -d "./${{ env.BRANCH_NAME }}" ]; then
-            echo "Creating app folder for ${{ env.BRANCH_NAME }}"
             mkdir -p ./${{ env.BRANCH_NAME }}
             rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
-          else
-            echo "App folder already exists."
           fi
 
-          # Generate .env file for the app
+          # Generate .env file
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
           APP_NAME=${{ env.BRANCH_NAME }}
           APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
@@ -52,10 +49,7 @@ jobs:
           REDIS_HOST=redis
           EOF
 
-          echo "Generated .env file for ${{ env.BRANCH_NAME }}:"
-          cat ./${{ env.BRANCH_NAME }}/.env
-
-      # 5. Commit and Push .env File Only
+      # 5. Commit and Push .env Only
       - name: Commit and Push .env to GitHub
         run: |
           git config --global user.email "github-actions@github.com"
@@ -71,18 +65,14 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # 7. Build Docker Image
-      - name: Build Docker Image
+      # 7. Build and Push Docker Image
+      - name: Build and Push Docker Image
         run: |
           docker build -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest \
           --build-arg BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M%S') ./${{ env.BRANCH_NAME }}
-
-      # 8. Push Docker Image to Docker Hub
-      - name: Push Docker Image to Docker Hub
-        run: |
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
 
-  # Remove Sandbox when Branch is Deleted
+# Cleanup Job
   cleanup:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
@@ -110,41 +100,35 @@ jobs:
           docker rm -f ${{ env.BRANCH_NAME }} || true
           docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
 
-          # Remove Docker Hub image using Bearer token
+          # Remove image from Docker Hub
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "${{ secrets.DOCKER_HUB_USERNAME }}", "password": "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}"}' \
             https://hub.docker.com/v2/users/login/ | jq -r .token)
 
           if [ -n "$TOKEN" ]; then
-            echo "Token retrieved. Deleting image from Docker Hub."
             curl -s -X DELETE \
               -H "Authorization: Bearer $TOKEN" \
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
-          else
-            echo "Failed to retrieve Docker Hub token. Image not deleted."
           fi
 
-          echo "Cleanup completed for ${{ env.BRANCH_NAME }}"
-
-      # 5. Remove App Folder and Push Changes
-      - name: Clean Up App Folder and Push Changes
+      # 5. Remove App Folder
+      - name: Remove App Folder
         run: |
           if [ -d "./${{ env.BRANCH_NAME }}" ]; then
             echo "Removing app folder for ${{ env.BRANCH_NAME }}"
             rm -rf "./${{ env.BRANCH_NAME }}"
-            git add -A
-            git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-            git push origin master
-          else
-            echo "App folder already removed."
           fi
 
-      # 6. Conditionally Remove Docker Network
+      # 6. Commit Only Folder Deletion
+      - name: Commit Cleanup to GitHub
+        run: |
+          git rm -rf "./${{ env.BRANCH_NAME }}" || echo "Folder already removed"
+          git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Nothing to push"
+
+      # 7. Remove Docker Network (if unused)
       - name: Remove Docker Network (if unused)
         run: |
           if [ -z "$(docker ps -q -f network=app-network)" ]; then
-            echo "No containers using app-network. Removing it..."
             docker network rm app-network || true
-          else
-            echo "Containers are still using app-network. Skipping removal."
           fi
