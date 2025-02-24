@@ -110,11 +110,17 @@ jobs:
           docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
 
           # Remove the image from Docker Hub
-          curl -s -X DELETE \
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             -u "${{ secrets.DOCKER_HUB_USERNAME }}:${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" \
-            "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
+            "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/")
 
-          echo "Cleanup completed for ${{ env.BRANCH_NAME }}"
+          if [ "$RESPONSE" -eq 202 ]; then
+            echo "Successfully deleted image from Docker Hub."
+          elif [ "$RESPONSE" -eq 404 ]; then
+            echo "Image not found on Docker Hub, skipping deletion."
+          else
+            echo "Failed to delete image from Docker Hub. HTTP status: $RESPONSE"
+          fi
 
       # 4. Conditionally Remove Docker Network
       - name: Remove Docker Network (if unused)
