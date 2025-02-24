@@ -28,7 +28,8 @@ jobs:
 
       - name: Create App Folder and .env
         run: |
-          mkdir -p "${{ env.BRANCH_NAME }}"
+          echo "Creating app folder for ${{ env.BRANCH_NAME }}"
+          mkdir -p "./${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
