@@ -3,6 +3,7 @@ version: '3.8'
 networks:
   app-network:
     driver: bridge
+    name: app-network 
     external: true
 
 services:

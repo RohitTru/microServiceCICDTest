@@ -21,7 +21,12 @@ jobs:
       # 2. Ensure Docker Network Exists
       - name: Ensure Docker Network Exists
         run: |
-          docker network inspect app-network || docker network create app-network
+          if ! docker network inspect app-network > /dev/null 2>&1; then
+            echo "Creating app-network..."
+            docker network create --driver bridge app-network
+          else
+            echo "app-network already exists."
+          fi
 
       # 3. Extract Branch Name
       - name: Extract Branch Name
@@ -47,9 +52,8 @@ jobs:
           REDIS_HOST=redis
           EOF
 
-            echo "Generated .env file for ${{ env.BRANCH_NAME }}:"
-            cat ./${{ env.BRANCH_NAME }}/.env
-
+          echo "Generated .env file for ${{ env.BRANCH_NAME }}:"
+          cat ./${{ env.BRANCH_NAME }}/.env
 
       # 5. Commit and Push App Folder to GitHub
       - name: Commit and Push App Folder to GitHub
@@ -89,3 +93,4 @@ jobs:
           echo "Cleaning up sandbox for $BRANCH_NAME"
           docker rm -f ${BRANCH_NAME} || true
           docker rmi rohittru/microservicecicdtest_${BRANCH_NAME}:latest || true
+          docker network rm app-network || true
