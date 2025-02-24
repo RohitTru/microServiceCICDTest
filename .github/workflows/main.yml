@@ -31,20 +31,24 @@ jobs:
           echo "Creating app folder for ${{ env.BRANCH_NAME }}"
           mkdir -p "${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
-      
-          # Generate a single random port and reuse it for both APP_PORT and VIRTUAL_PORT
-          RANDOM_PORT=$((5000 + RANDOM % 1000))
-          
+        
           echo "Generating .env file for ${{ env.BRANCH_NAME }}"
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
           APP_NAME=${{ env.BRANCH_NAME }}
           APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
-          APP_PORT=${RANDOM_PORT}
+          APP_PORT=$((5000 + RANDOM % 1000))
           VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
-          VIRTUAL_PORT=${RANDOM_PORT}
+          VIRTUAL_PORT=$APP_PORT
           REDIS_HOST=redis
           ENABLE_SSL=false
           EOF
+      
+      - name: Restart Nginx with New Config
+        run: |
+          echo "Generating Nginx config for ${{ env.BRANCH_NAME }}"
+          envsubst < ./nginx/templates/default.conf.template > ./nginx/conf.d/${{ env.BRANCH_NAME }}.conf
+          docker exec nginx-proxy nginx -s reload
+      
 
       - name: Commit and Push App Folder
         run: |

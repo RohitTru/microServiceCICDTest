@@ -7,7 +7,6 @@ networks:
     external: true
 
 services:
-  # Redis Service
   redis:
     image: redis:6.2
     container_name: redis
@@ -17,7 +16,6 @@ services:
     networks:
       - app-network
 
-  # Application Service
   app:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
     pull_policy: always
@@ -26,22 +24,21 @@ services:
     env_file:
       - "./${APP_NAME}/.env"
     ports:
-      - "${APP_PORT:-5004}:${APP_PORT:-5004}"
+      - "${APP_PORT}:${APP_PORT}"
     environment:
       - VIRTUAL_HOST=${VIRTUAL_HOST}
-      - VIRTUAL_PORT=${VIRTUAL_PORT}
+      - VIRTUAL_PORT=${APP_PORT}
       - ENABLE_SSL=${ENABLE_SSL:-false}
     depends_on:
       - redis
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-5004}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Nginx Proxy Service
   nginx:
     image: jwilder/nginx-proxy:latest
     container_name: nginx-proxy
@@ -54,10 +51,11 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:rw
       - ./certs:/etc/ssl/certs:ro
       - ./nginx-entrypoint.sh:/docker-entrypoint.d/nginx-entrypoint.sh:ro
+      - ./nginx/templates:/etc/nginx/templates
     environment:
       - DEFAULT_HOST=default.emerginary.com
       - VIRTUAL_HOST=${VIRTUAL_HOST}
-      - VIRTUAL_PORT=${VIRTUAL_PORT}
+      - VIRTUAL_PORT=${APP_PORT}
       - ENABLE_SSL=${ENABLE_SSL}
     entrypoint: ["/docker-entrypoint.d/nginx-entrypoint.sh", "nginx", "-g", "daemon off;"]
     networks:
