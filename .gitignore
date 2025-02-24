@@ -1,6 +1,15 @@
+# Ignore personal notes
 notes.txt
+
 # Ignore all feature app folders and their .env files
-feature-*/.env
 feature-*/
+!feature-*/.env
+
+# Prevent master folder from being tracked
 master/
 
+# General ignores
+*.log
+*.tmp
+__pycache__/
+.DS_Store

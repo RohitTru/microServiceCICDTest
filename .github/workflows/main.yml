@@ -42,14 +42,14 @@ jobs:
           REDIS_HOST=redis
           EOF
 
-      # 5. Commit and Push .env (without tracking master)
+      # 5. Force Add .env (Override .gitignore)
       - name: Commit and Push .env to GitHub
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add "./${{ env.BRANCH_NAME }}/.env"
+          git add -f "./${{ env.BRANCH_NAME }}/.env"
           git commit -m "Add .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-          git push origin HEAD:${{ env.BRANCH_NAME }} || echo "Nothing to push"
+          git push origin HEAD:${{ env.BRANCH_NAME }}
 
       # 6. Log in to Docker Hub
       - name: Log in to Docker Hub
@@ -65,7 +65,6 @@ jobs:
           --build-arg BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M%S') ./${{ env.BRANCH_NAME }}
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
 
-# Cleanup Job
   cleanup:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
@@ -104,30 +103,31 @@ jobs:
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
           fi
 
-      # 5. Remove App and Master Folders
-      - name: Remove App and Master Folders
+      # 5. Remove App Folder
+      - name: Remove App Folder
         run: |
-          echo "Checking for leftover folders..."
           if [ -d "./${{ env.BRANCH_NAME }}" ]; then
             echo "Removing app folder for ${{ env.BRANCH_NAME }}"
             rm -rf "./${{ env.BRANCH_NAME }}"
           fi
+
+      # 6. Remove Master Folder (if exists)
+      - name: Remove Master Folder
+        run: |
           if [ -d "./master" ]; then
-            echo "Removing unwanted master folder"
+            echo "Removing leftover master folder"
             rm -rf ./master
           fi
 
-      # 6. Commit Cleanup to GitHub
+      # 7. Clean Git Working Directory
       - name: Commit Cleanup to GitHub
         run: |
-          git fetch origin master
-          git pull origin master || echo "Already up to date."
-          git rm -rf "./${{ env.BRANCH_NAME }}" || echo "App folder already removed"
-          git rm -rf ./master || echo "No master folder to remove"
-          git commit -m "Cleanup: Removed app and master folders for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git pull origin master
+          git add -A
+          git commit -m "Cleanup: Removed app folder and master for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"
 
-      # 7. Remove Docker Network (if unused)
+      # 8. Remove Docker Network (if unused)
       - name: Remove Docker Network (if unused)
         run: |
           if [ -z "$(docker ps -q -f network=app-network)" ]; then
