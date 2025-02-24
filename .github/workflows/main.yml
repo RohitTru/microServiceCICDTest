@@ -14,25 +14,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Ensure Docker Network Exists
       - name: Ensure Docker Network Exists
         run: |
           if ! docker network inspect app-network > /dev/null 2>&1; then
             docker network create --driver bridge app-network
           fi
 
-      # 3. Extract Branch Name
       - name: Extract Branch Name
         run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
 
-      # 4. Create App Folder and Generate .env
       - name: Create App Folder and .env
         run: |
-          mkdir -p ./${{ env.BRANCH_NAME }}
+          mkdir -p "${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
@@ -42,57 +38,47 @@ jobs:
           REDIS_HOST=redis
           EOF
 
-      # 5. Force Add .env (Override .gitignore)
-      - name: Commit and Push .env to GitHub
-        run: |
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git add -f "./${{ env.BRANCH_NAME }}/.env"
-          git commit -m "Add .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-          git push origin HEAD:${{ env.BRANCH_NAME }}
-
-      # 6. Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # 7. Build and Push Docker Image
       - name: Build and Push Docker Image
         run: |
           docker build -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest \
           --build-arg BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M%S') ./${{ env.BRANCH_NAME }}
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
 
+      - name: Clean Up Workspace After Build
+        run: |
+          echo "Cleaning up temporary files..."
+          rm -rf "./${{ env.BRANCH_NAME }}" || true
+          rm -rf "./master" || true
+
   cleanup:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout Code
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # 3. Extract Branch Name
       - name: Extract Branch Name
         run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
 
-      # 4. Remove Docker Image and Sandbox
-      - name: Remove Docker Image and Sandbox
+      - name: Remove Docker Resources
         run: |
-          echo "Cleaning up sandbox for ${{ env.BRANCH_NAME }}"
+          echo "Cleaning up Docker resources for ${{ env.BRANCH_NAME }}..."
           docker rm -f ${{ env.BRANCH_NAME }} || true
           docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
 
-          # Remove image from Docker Hub
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "${{ secrets.DOCKER_HUB_USERNAME }}", "password": "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}"}' \
             https://hub.docker.com/v2/users/login/ | jq -r .token)
@@ -103,31 +89,12 @@ jobs:
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
           fi
 
-      # 5. Remove App Folder
-      - name: Remove App Folder
+      - name: Clean Up Workspace After Deletion
         run: |
-          if [ -d "./${{ env.BRANCH_NAME }}" ]; then
-            echo "Removing app folder for ${{ env.BRANCH_NAME }}"
-            rm -rf "./${{ env.BRANCH_NAME }}"
-          fi
+          echo "Cleaning up workspace..."
+          rm -rf "./${{ env.BRANCH_NAME }}" || true
+          rm -rf "./master" || true
 
-      # 6. Remove Master Folder (if exists)
-      - name: Remove Master Folder
-        run: |
-          if [ -d "./master" ]; then
-            echo "Removing leftover master folder"
-            rm -rf ./master
-          fi
-
-      # 7. Clean Git Working Directory
-      - name: Commit Cleanup to GitHub
-        run: |
-          git pull origin master
-          git add -A
-          git commit -m "Cleanup: Removed app folder and master for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-          git push origin master || echo "Nothing to push"
-
-      # 8. Remove Docker Network (if unused)
       - name: Remove Docker Network (if unused)
         run: |
           if [ -z "$(docker ps -q -f network=app-network)" ]; then
