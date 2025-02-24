@@ -104,12 +104,16 @@ jobs:
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
           fi
 
-      # 5. Remove App Folder
-      - name: Remove App Folder
+      # 5. Remove App and Master Folder
+      - name: Remove App and Master Folders
         run: |
           if [ -d "./${{ env.BRANCH_NAME }}" ]; then
             echo "Removing app folder for ${{ env.BRANCH_NAME }}"
             rm -rf "./${{ env.BRANCH_NAME }}"
+          fi
+          if [ -d "./master" ]; then
+            echo "Removing unwanted master folder"
+            rm -rf ./master
           fi
 
       # 6. Commit Cleanup to GitHub
@@ -117,7 +121,8 @@ jobs:
         run: |
           git pull origin master
           git rm -rf "./${{ env.BRANCH_NAME }}" || echo "Folder already removed"
-          git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git rm -rf ./master || echo "No master folder to remove"
+          git commit -m "Cleanup: Removed app and master folders for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"
 
       # 7. Remove Docker Network (if unused)
