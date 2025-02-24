@@ -1,5 +1,19 @@
-# Ignore all generated app folders and their .env files
-feature-*/.env
-feature-*/
-master/
+# Ignore editor and system files
+.DS_Store
 notes.txt
+
+# Ignore build artifacts
+*.pyc
+__pycache__/
+
+# Ignore Docker build cache
+*.tar
+
+# Ignore only the environment template, not the generated .env files
+microservice-env-template.env
+
+# Do not ignore app folders for feature branches
+!feature-*/
+
+# Exclude the master app folder if it appears accidentally
+master/

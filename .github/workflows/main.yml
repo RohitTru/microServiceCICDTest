@@ -40,6 +40,15 @@ jobs:
           REDIS_HOST=redis
           EOF
 
+      - name: Commit and Push App Folder
+        run: |
+          echo "Committing app folder to branch ${{ env.BRANCH_NAME }}"
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add "${{ env.BRANCH_NAME }}"
+          git commit -m "Add app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin HEAD:${{ env.BRANCH_NAME }} || echo "Nothing to push"
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
@@ -91,11 +100,14 @@ jobs:
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
           fi
 
-      - name: Clean Up Workspace After Deletion
+      - name: Remove App Folder from GitHub Repo
         run: |
-          echo "Cleaning up workspace..."
-          rm -rf "./${{ env.BRANCH_NAME }}" || true
-          rm -rf "./master" || true
+          echo "Removing app folder from repository..."
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git rm -rf "./${{ env.BRANCH_NAME }}" || echo "No app folder to remove"
+          git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Nothing to push"
 
       - name: Remove Docker Network (if unused)
         run: |
