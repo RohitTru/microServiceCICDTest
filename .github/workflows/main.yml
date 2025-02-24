@@ -54,9 +54,10 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add "./${{ env.BRANCH_NAME }}/.env"
+          git add -f "./${{ env.BRANCH_NAME }}/.env"  # Force add ignored .env
           git commit -m "Add .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
+
 
       # 6. Log in to Docker Hub
       - name: Log in to Docker Hub
