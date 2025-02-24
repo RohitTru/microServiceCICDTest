@@ -3,10 +3,11 @@ version: '3.8'
 networks:
   app-network:
     driver: bridge
-    name: app-network 
+    name: app-network
     external: true
 
 services:
+  # Redis Service
   redis:
     image: redis:6.2
     container_name: redis
@@ -16,6 +17,7 @@ services:
     networks:
       - app-network
 
+  # Application Service
   app:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
     pull_policy: always
@@ -32,7 +34,13 @@ services:
       - redis
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-5004}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # Nginx Proxy Service
   nginx:
     image: jwilder/nginx-proxy:latest
     container_name: nginx-proxy
@@ -45,5 +53,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
     environment:
       - DEFAULT_HOST=default.emerginary.com
+      - VIRTUAL_HOST=${APP_NAME}.emerginary.com
+      - VIRTUAL_PORT=${APP_PORT:-5004}
     networks:
       - app-network
