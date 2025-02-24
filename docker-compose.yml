@@ -21,7 +21,7 @@ services:
     container_name: "${APP_NAME:-default-app}"
     restart: always
     env_file:
-      - ./${APP_NAME}/.env  # Correct path with dynamic APP_NAME
+      - "./${APP_NAME}/.env"
     ports:
       - "${APP_PORT:-5004}:${APP_PORT:-5004}"
     environment:
