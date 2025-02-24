@@ -1,10 +1,5 @@
-# Ignore general files
-notes.txt
-.DS_Store
-
-# Allow feature branch folders but ignore their .env files
+# Ignore all generated app folders and their .env files
 feature-*/.env
-!feature-*/
-
-# Ignore master folder if desired
+feature-*/
 master/
+notes.txt
