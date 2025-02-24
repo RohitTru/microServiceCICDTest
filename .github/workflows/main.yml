@@ -42,7 +42,7 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add "${{ env.BRANCH_NAME }}"
+          git add -f "${{ env.BRANCH_NAME }}" # Force add the folder despite .gitignore
           git commit -m "Add app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 

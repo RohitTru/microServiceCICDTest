@@ -1,16 +1,10 @@
-# Ignore environment and build files
+# Ignore general files
 notes.txt
-*.env
-*.log
-*.tmp
-
-# Ignore all feature app folders
-feature-*/
-
-# Ignore the problematic master folder
-master/
-
-# General ignores
-__pycache__/
-node_modules/
 .DS_Store
+
+# Allow feature branch folders but ignore their .env files
+feature-*/.env
+!feature-*/
+
+# Ignore master folder if desired
+master/
