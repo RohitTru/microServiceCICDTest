@@ -115,6 +115,7 @@ jobs:
       # 6. Commit Cleanup to GitHub
       - name: Commit Cleanup to GitHub
         run: |
+          git pull origin master
           git rm -rf "./${{ env.BRANCH_NAME }}" || echo "Folder already removed"
           git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"
