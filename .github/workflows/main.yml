@@ -82,7 +82,7 @@ jobs:
         run: |
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
 
-  # Remove Sandbox when Branch is Deleted
+# Remove Sandbox when Branch is Deleted
   cleanup:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
@@ -134,3 +134,4 @@ jobs:
           else
             echo "Containers are still using app-network. Skipping removal."
           fi
+
