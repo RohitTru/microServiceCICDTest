@@ -49,7 +49,7 @@ jobs:
           git config --global user.name "GitHub Actions"
           git add "./${{ env.BRANCH_NAME }}/.env"
           git commit -m "Add .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-          git push origin HEAD:${{ env.BRANCH_NAME }}
+          git push origin HEAD:${{ env.BRANCH_NAME }} || echo "Nothing to push"
 
       # 6. Log in to Docker Hub
       - name: Log in to Docker Hub
@@ -104,9 +104,10 @@ jobs:
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
           fi
 
-      # 5. Remove App and Master Folder
+      # 5. Remove App and Master Folders
       - name: Remove App and Master Folders
         run: |
+          echo "Checking for leftover folders..."
           if [ -d "./${{ env.BRANCH_NAME }}" ]; then
             echo "Removing app folder for ${{ env.BRANCH_NAME }}"
             rm -rf "./${{ env.BRANCH_NAME }}"
@@ -119,8 +120,9 @@ jobs:
       # 6. Commit Cleanup to GitHub
       - name: Commit Cleanup to GitHub
         run: |
-          git pull origin master
-          git rm -rf "./${{ env.BRANCH_NAME }}" || echo "Folder already removed"
+          git fetch origin master
+          git pull origin master || echo "Already up to date."
+          git rm -rf "./${{ env.BRANCH_NAME }}" || echo "App folder already removed"
           git rm -rf ./master || echo "No master folder to remove"
           git commit -m "Cleanup: Removed app and master folders for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"
