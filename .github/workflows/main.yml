@@ -28,8 +28,7 @@ jobs:
 
       - name: Create App Folder and .env
         run: |
-          echo "Creating app folder for ${{ env.BRANCH_NAME }}"
-          mkdir -p "./${{ env.BRANCH_NAME }}"
+          mkdir -p "${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
@@ -38,6 +37,14 @@ jobs:
           APP_PORT=$((5000 + RANDOM % 1000))
           REDIS_HOST=redis
           EOF
+
+      - name: Commit and Push App Folder and .env to GitHub
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add "${{ env.BRANCH_NAME }}"
+          git commit -m "Add app folder and .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin HEAD:${{ env.BRANCH_NAME }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
