@@ -7,6 +7,7 @@ networks:
     external: true
 
 services:
+  # Redis Service (Shared)
   redis:
     image: redis:6.2
     container_name: redis
@@ -16,9 +17,9 @@ services:
     networks:
       - app-network
 
+  # Application Service (Dynamic)
   app:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
-    pull_policy: always
     container_name: "${APP_NAME:-default-app}"
     restart: always
     env_file:
@@ -29,6 +30,10 @@ services:
       - VIRTUAL_HOST=${VIRTUAL_HOST}
       - VIRTUAL_PORT=${APP_PORT}
       - ENABLE_SSL=${ENABLE_SSL:-false}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${APP_NAME}.rule=Host(`${VIRTUAL_HOST}`)"
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}"
     depends_on:
       - redis
     networks:
@@ -39,6 +44,7 @@ services:
       timeout: 10s
       retries: 3
 
+  # Nginx Proxy (Automated Reverse Proxy)
   nginx:
     image: jwilder/nginx-proxy:latest
     container_name: nginx-proxy
@@ -47,16 +53,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:rw
+      - /var/run/docker.sock:/tmp/docker.sock:ro  # Automatic discovery
       - ./certs:/etc/ssl/certs:ro
-      - ./nginx-entrypoint.sh:/docker-entrypoint.d/nginx-entrypoint.sh:ro
-      - ./nginx/templates:/etc/nginx/templates
     environment:
       - DEFAULT_HOST=default.emerginary.com
-      - VIRTUAL_HOST=${VIRTUAL_HOST}
-      - VIRTUAL_PORT=${APP_PORT}
-      - ENABLE_SSL=${ENABLE_SSL}
-    entrypoint: ["/docker-entrypoint.d/nginx-entrypoint.sh", "nginx", "-g", "daemon off;"]
     networks:
       - app-network
