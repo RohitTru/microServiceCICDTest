@@ -28,8 +28,9 @@ services:
     ports:
       - "${APP_PORT:-5004}:${APP_PORT:-5004}"
     environment:
-      - VIRTUAL_HOST=${APP_NAME}.emerginary.com
-      - VIRTUAL_PORT=${APP_PORT:-5004}
+      - VIRTUAL_HOST=${VIRTUAL_HOST}
+      - VIRTUAL_PORT=${VIRTUAL_PORT}
+      - ENABLE_SSL=${ENABLE_SSL:-false}
     depends_on:
       - redis
     networks:
@@ -50,10 +51,14 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:rw
+      - ./certs:/etc/ssl/certs:ro
+      - ./nginx-entrypoint.sh:/docker-entrypoint.d/nginx-entrypoint.sh:ro
     environment:
       - DEFAULT_HOST=default.emerginary.com
-      - VIRTUAL_HOST=${APP_NAME}.emerginary.com
-      - VIRTUAL_PORT=${APP_PORT:-5004}
+      - VIRTUAL_HOST=${VIRTUAL_HOST}
+      - VIRTUAL_PORT=${VIRTUAL_PORT}
+      - ENABLE_SSL=${ENABLE_SSL}
+    entrypoint: ["/docker-entrypoint.d/nginx-entrypoint.sh", "nginx", "-g", "daemon off;"]
     networks:
       - app-network
