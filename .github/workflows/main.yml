@@ -55,8 +55,8 @@ jobs:
           echo "Generated .env file for ${{ env.BRANCH_NAME }}:"
           cat ./${{ env.BRANCH_NAME }}/.env
 
-      # 5. Commit and Push App Folder to GitHub
-      - name: Commit and Push App Folder to GitHub
+      # 5. Commit and Push .env File Only
+      - name: Commit and Push .env to GitHub
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
@@ -126,7 +126,7 @@ jobs:
 
           echo "Cleanup completed for ${{ env.BRANCH_NAME }}"
 
-      # 5. Remove App Folder and Commit Deletion
+      # 5. Remove App Folder and Push Changes
       - name: Clean Up App Folder and Push Changes
         run: |
           if [ -d "./${{ env.BRANCH_NAME }}" ]; then
