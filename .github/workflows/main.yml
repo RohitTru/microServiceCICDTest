@@ -109,18 +109,21 @@ jobs:
           # Remove the Docker image locally
           docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
 
-          # Remove the image from Docker Hub
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-            -u "${{ secrets.DOCKER_HUB_USERNAME }}:${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" \
-            "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/")
+          # Remove the image from Docker Hub using Bearer token
+          TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
+            -d '{"username": "${{ secrets.DOCKER_HUB_USERNAME }}", "password": "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}"}' \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
 
-          if [ "$RESPONSE" -eq 202 ]; then
-            echo "Successfully deleted image from Docker Hub."
-          elif [ "$RESPONSE" -eq 404 ]; then
-            echo "Image not found on Docker Hub, skipping deletion."
+          if [ -n "$TOKEN" ]; then
+            echo "Token retrieved. Deleting image from Docker Hub."
+            curl -s -X DELETE \
+              -H "Authorization: Bearer $TOKEN" \
+              "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
           else
-            echo "Failed to delete image from Docker Hub. HTTP status: $RESPONSE"
+            echo "Failed to retrieve Docker Hub token. Image not deleted."
           fi
+
+          echo "Cleanup completed for ${{ env.BRANCH_NAME }}"
 
       # 4. Conditionally Remove Docker Network
       - name: Remove Docker Network (if unused)
