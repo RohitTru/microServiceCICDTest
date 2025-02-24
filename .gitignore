@@ -1,3 +1,6 @@
 notes.txt
-master/
-*/.env
+# Ignore all .env files
+*.env
+
+# Allow tracked .env in feature branches
+!*/.env

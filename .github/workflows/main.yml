@@ -22,10 +22,7 @@ jobs:
       - name: Ensure Docker Network Exists
         run: |
           if ! docker network inspect app-network > /dev/null 2>&1; then
-            echo "Creating app-network..."
             docker network create --driver bridge app-network
-          else
-            echo "app-network already exists."
           fi
 
       # 3. Extract Branch Name
@@ -33,15 +30,11 @@ jobs:
         run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
 
       # 4. Create App Folder and Generate .env
-      - name: Create App Folder from Template and Generate .env
+      - name: Create App Folder and .env
         run: |
-          echo "Creating app folder for ${{ env.BRANCH_NAME }}"
-          if [ ! -d "./${{ env.BRANCH_NAME }}" ]; then
-            mkdir -p ./${{ env.BRANCH_NAME }}
-            rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
-          fi
+          mkdir -p ./${{ env.BRANCH_NAME }}
+          rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
-          # Generate .env file
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
           APP_NAME=${{ env.BRANCH_NAME }}
           APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
@@ -49,15 +42,14 @@ jobs:
           REDIS_HOST=redis
           EOF
 
-      # 5. Commit and Push .env Only
+      # 5. Commit and Push .env (without tracking master)
       - name: Commit and Push .env to GitHub
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add -f "./${{ env.BRANCH_NAME }}/.env"  # Force add ignored .env
+          git add "./${{ env.BRANCH_NAME }}/.env"
           git commit -m "Add .env for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
-
 
       # 6. Log in to Docker Hub
       - name: Log in to Docker Hub
@@ -120,7 +112,7 @@ jobs:
             rm -rf "./${{ env.BRANCH_NAME }}"
           fi
 
-      # 6. Commit Only Folder Deletion
+      # 6. Commit Cleanup to GitHub
       - name: Commit Cleanup to GitHub
         run: |
           git rm -rf "./${{ env.BRANCH_NAME }}" || echo "Folder already removed"
