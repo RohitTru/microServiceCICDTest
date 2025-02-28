@@ -3,21 +3,31 @@
 # Ensure pip is updated
 pip install --upgrade pip
 
-# Get the current feature app folder (assuming it's in the current directory)
-APP_DIR="./${APP_NAME:-feature-app}"
+# Ensure we are in the correct directory
+APP_DIR="./${APP_NAME:-feature-test3}"  # Using the value from the feature app
 
-# Check if the feature app folder exists, and navigate to it
+# Check if the feature app directory exists
 if [ ! -d "$APP_DIR" ]; then
-    echo "❌ Feature app directory $APP_DIR not found. Exiting..."
+    echo "❌ Feature app directory ./$APP_DIR not found. Exiting..."
     exit 1
 fi
 
-cd "$APP_DIR" || exit
+# Navigate to the feature app directory
+cd "$APP_DIR"
 
-# Create and activate virtual environment in the feature branch directory
+# Check if .env exists in the feature app directory
+if [ ! -f ".env" ]; then
+    echo "❌ .env file not found in the $APP_DIR directory. Exiting..."
+    exit 1
+fi
+
+# Export environment variables from the feature app's .env file
+export $(grep -v '^#' .env | xargs)
+
+# Create and activate the virtual environment
 VENV_DIR="venv"
 if [ ! -d "$VENV_DIR" ]; then
-    echo "🚀 Creating virtual environment in $APP_DIR..."
+    echo "🚀 Creating virtual environment..."
     python3 -m venv "$VENV_DIR"
     echo "✅ Virtual environment created!"
 else
@@ -27,7 +37,7 @@ fi
 # Activate the virtual environment
 source "$VENV_DIR/bin/activate"
 
-# Install dependencies from the requirements.txt in the feature branch
+# Install dependencies from the requirements.txt in the feature app
 pip install -r requirements.txt || echo "⚠️ Failed to install requirements!"
 
 # Ensure pre-commit is installed
