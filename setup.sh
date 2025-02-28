@@ -29,6 +29,14 @@ if ! command -v pre-commit &> /dev/null; then
     fi
 fi
 
+# Ensure the .pre-commit-config.yml is in the feature branch
+FEATURE_BRANCH_PRE_COMMIT_CONFIG=".pre-commit-config.yml"
+
+if [ ! -f "$FEATURE_BRANCH_PRE_COMMIT_CONFIG" ]; then
+    echo "❌ .pre-commit-config.yml not found in the feature branch directory. Exiting..."
+    exit 1
+fi
+
 # Install and activate pre-commit hooks
 if [ ! -f .git/hooks/pre-commit ]; then
     pre-commit install
@@ -37,4 +45,4 @@ else
     echo "🔄 Pre-commit hooks already installed. Skipping..."
 fi
 
-echo "✅ Virtual environment set up and ready to go!"
+echo "✅ Virtual environment and pre-commit hooks set up successfully!"
