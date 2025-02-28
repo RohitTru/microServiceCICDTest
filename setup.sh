@@ -3,10 +3,21 @@
 # Ensure pip is updated
 pip install --upgrade pip
 
+# Get the current feature app folder (assuming it's in the current directory)
+APP_DIR="./${APP_NAME:-feature-app}"
+
+# Check if the feature app folder exists, and navigate to it
+if [ ! -d "$APP_DIR" ]; then
+    echo "❌ Feature app directory $APP_DIR not found. Exiting..."
+    exit 1
+fi
+
+cd "$APP_DIR" || exit
+
 # Create and activate virtual environment in the feature branch directory
 VENV_DIR="venv"
 if [ ! -d "$VENV_DIR" ]; then
-    echo "🚀 Creating virtual environment..."
+    echo "🚀 Creating virtual environment in $APP_DIR..."
     python3 -m venv "$VENV_DIR"
     echo "✅ Virtual environment created!"
 else
@@ -17,7 +28,7 @@ fi
 source "$VENV_DIR/bin/activate"
 
 # Install dependencies from the requirements.txt in the feature branch
-pip install -r app-template/requirements.txt || echo "⚠️ Failed to install requirements!"
+pip install -r requirements.txt || echo "⚠️ Failed to install requirements!"
 
 # Ensure pre-commit is installed
 if ! command -v pre-commit &> /dev/null; then
@@ -29,14 +40,6 @@ if ! command -v pre-commit &> /dev/null; then
     fi
 fi
 
-# Ensure the .pre-commit-config.yml is in the feature branch
-FEATURE_BRANCH_PRE_COMMIT_CONFIG=".pre-commit-config.yml"
-
-if [ ! -f "$FEATURE_BRANCH_PRE_COMMIT_CONFIG" ]; then
-    echo "❌ .pre-commit-config.yml not found in the feature branch directory. Exiting..."
-    exit 1
-fi
-
 # Install and activate pre-commit hooks
 if [ ! -f .git/hooks/pre-commit ]; then
     pre-commit install
@@ -45,4 +48,4 @@ else
     echo "🔄 Pre-commit hooks already installed. Skipping..."
 fi
 
-echo "✅ Virtual environment and pre-commit hooks set up successfully!"
+echo "✅ Virtual environment set up and ready to go!"
