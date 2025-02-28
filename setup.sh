@@ -3,7 +3,20 @@
 # Ensure pip is updated
 pip install --upgrade pip
 
-# Install dependencies
+# Create and activate virtual environment in the feature branch directory
+VENV_DIR="venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "🚀 Creating virtual environment..."
+    python3 -m venv "$VENV_DIR"
+    echo "✅ Virtual environment created!"
+else
+    echo "✅ Virtual environment already exists!"
+fi
+
+# Activate the virtual environment
+source "$VENV_DIR/bin/activate"
+
+# Install dependencies from the requirements.txt in the feature branch
 pip install -r app-template/requirements.txt || echo "⚠️ Failed to install requirements!"
 
 # Ensure pre-commit is installed
@@ -23,3 +36,5 @@ if [ ! -f .git/hooks/pre-commit ]; then
 else
     echo "🔄 Pre-commit hooks already installed. Skipping..."
 fi
+
+echo "✅ Virtual environment set up and ready to go!"
