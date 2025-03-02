@@ -1,7 +1,6 @@
 {
   "port_assignments": {
-    "master": 5002,
-    "feature-test-ports2": 5001
+    "master": 5002
   },
   "available_ports": {
     "start": 5000,
