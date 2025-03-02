@@ -1,0 +1,7 @@
+{
+    "port_assignments": {},
+    "available_ports": {
+      "start": 5000,
+      "end": 6000
+    }
+  }
