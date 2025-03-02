@@ -27,6 +27,29 @@ jobs:
       - name: Extract Branch Name
         run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
 
+      - name: Generate Version Info
+        run: |
+          # Get commit hash
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
+          
+          # Get commit count for version number
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          echo "COMMIT_COUNT=${COMMIT_COUNT}" >> $GITHUB_ENV
+          
+          # Generate timestamp
+          TIMESTAMP=$(date +'%Y%m%d%H%M%S')
+          echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
+          
+          # Combined version string
+          echo "VERSION=${COMMIT_COUNT}-${COMMIT_HASH}" >> $GITHUB_ENV
+          
+          echo "Generated version info:"
+          echo "Commit Hash: ${COMMIT_HASH}"
+          echo "Commit Count: ${COMMIT_COUNT}"
+          echo "Timestamp: ${TIMESTAMP}"
+          echo "Version: ${COMMIT_COUNT}-${COMMIT_HASH}"
+
       - name: Setup Git
         run: |
           git config --global user.email "github-actions@github.com"
@@ -65,12 +88,15 @@ jobs:
           echo "Generating .env file for ${{ env.BRANCH_NAME }}"
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
           APP_NAME=${{ env.BRANCH_NAME }}
-          APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
+          APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
           APP_PORT=${{ env.APP_PORT }}
           VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
           VIRTUAL_PORT=${{ env.APP_PORT }}
           REDIS_HOST=redis
           ENABLE_SSL=false
+          APP_VERSION=${{ env.VERSION }}
+          APP_COMMIT=${{ env.COMMIT_HASH }}
+          BUILD_TIMESTAMP=${{ env.TIMESTAMP }}
           EOF
 
       - name: Commit and Push App Folder
@@ -87,9 +113,18 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
+          # Build with multiple tags
           docker build -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest \
-          --build-arg BUILD_TIMESTAMP=$(date +'%Y%m%d%H%M%S') ./${{ env.BRANCH_NAME }}
+                      -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }} \
+                      -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.TIMESTAMP }} \
+                      --build-arg BUILD_VERSION=${{ env.VERSION }} \
+                      --build-arg BUILD_TIMESTAMP=${{ env.TIMESTAMP }} \
+                      ./${{ env.BRANCH_NAME }}
+          
+          # Push all tags
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
+          docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
+          docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.TIMESTAMP }}
 
       - name: Clean Up Workspace After Build
         run: |
@@ -145,6 +180,7 @@ jobs:
           echo "Cleaning up Docker resources for ${{ env.BRANCH_NAME }}..."
           docker rm -f ${{ env.BRANCH_NAME }} || true
           docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
+          docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:* || true  # Remove all version tags
 
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "${{ secrets.DOCKER_HUB_USERNAME }}", "password": "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}"}' \
