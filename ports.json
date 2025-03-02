@@ -1,7 +1,9 @@
 {
-    "port_assignments": {},
-    "available_ports": {
-      "start": 5000,
-      "end": 6000
-    }
+  "port_assignments": {
+    "feature-test-ports": 5000
+  },
+  "available_ports": {
+    "start": 5000,
+    "end": 6000
   }
+}
