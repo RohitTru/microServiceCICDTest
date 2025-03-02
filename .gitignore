@@ -21,3 +21,6 @@ microservice-env-template.env
 
 # Exclude the master app folder if it appears accidentally
 master/
+
+# Do not ignore ports.json
+!ports.json
