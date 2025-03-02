@@ -17,14 +17,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Ensure Docker Network Exists
-        run: |
-          if ! docker network inspect app-network > /dev/null 2>&1; then
-            docker network create --driver bridge app-network
-          fi
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
       - name: Extract Branch Name
         run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
+      - name: Assign Port
+        run: |
+          chmod +x scripts/port_manager.py
+          ./scripts/port_manager.py assign ${{ env.BRANCH_NAME }} >> $GITHUB_ENV
+          echo "Assigned port: ${{ env.APP_PORT }}"
 
       - name: Create App Folder and .env
         run: |
@@ -32,16 +37,15 @@ jobs:
           mkdir -p "${{ env.BRANCH_NAME }}"
           rsync -av --exclude 'microservice-env-template.env' ./app-template/ ./${{ env.BRANCH_NAME }}/
 
-          APP_PORT=$((5000 + RANDOM % 1000))
-          echo "Generated APP_PORT: $APP_PORT"
+          echo "Using assigned port: ${{ env.APP_PORT }}"
 
           echo "Generating .env file for ${{ env.BRANCH_NAME }}"
           cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
           APP_NAME=${{ env.BRANCH_NAME }}
           APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
-          APP_PORT=$APP_PORT
+          APP_PORT=${{ env.APP_PORT }}
           VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
-          VIRTUAL_PORT=$APP_PORT
+          VIRTUAL_PORT=${{ env.APP_PORT }}
           REDIS_HOST=redis
           ENABLE_SSL=false
           EOF
@@ -81,14 +85,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Extract Branch Name
+        run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
+
+      - name: Release Port
+        run: |
+          chmod +x scripts/port_manager.py
+          ./scripts/port_manager.py release ${{ env.BRANCH_NAME }}
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Extract Branch Name
-        run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
 
       - name: Remove Docker Resources
         run: |
@@ -114,9 +128,3 @@ jobs:
           git rm -rf "./${{ env.BRANCH_NAME }}" || echo "No app folder to remove"
           git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"
-
-      - name: Remove Docker Network (if unused)
-        run: |
-          if [ -z "$(docker ps -q -f network=app-network)" ]; then
-            docker network rm app-network || true
-          fi
