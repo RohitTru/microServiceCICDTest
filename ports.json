@@ -1,6 +1,5 @@
 {
   "port_assignments": {
-    "feature-test-ports": 5000,
     "master": 5002,
     "feature-tests-ports4": 5001
   },
