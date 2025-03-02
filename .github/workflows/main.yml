@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: master  # Ensure we're on master to update ports.json
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -30,6 +32,13 @@ jobs:
           chmod +x scripts/port_manager.py
           ./scripts/port_manager.py assign ${{ env.BRANCH_NAME }} >> $GITHUB_ENV
           echo "Assigned port: ${{ env.APP_PORT }}"
+          
+          # Commit the updated ports.json
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add ports.json
+          git commit -m "Update port assignments for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Nothing to push"
 
       - name: Create App Folder and .env
         run: |
@@ -84,6 +93,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: master  # Ensure we're on master to update ports.json
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -97,6 +108,13 @@ jobs:
         run: |
           chmod +x scripts/port_manager.py
           ./scripts/port_manager.py release ${{ env.BRANCH_NAME }}
+          
+          # Commit the updated ports.json after port release
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add ports.json
+          git commit -m "Release port for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Nothing to push"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
