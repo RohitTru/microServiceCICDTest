@@ -99,6 +99,55 @@ jobs:
           BUILD_TIMESTAMP=${{ env.TIMESTAMP }}
           EOF
 
+      - name: Install Test Dependencies
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Mandatory Tests
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          echo "Running mandatory tests..."
+          python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml -v || exit 1
+
+      - name: Run Recommended Tests
+        continue-on-error: true
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          echo "Running recommended tests..."
+          python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:coverage-recommended.xml -v
+
+      - name: Run Optional Tests
+        continue-on-error: true
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          echo "Running optional tests..."
+          python -m pytest tests/test_optional.py --cov=. --cov-report=xml:coverage-optional.xml -v
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          echo "# Test Results Summary" > test-report.md
+          echo "## Mandatory Tests" >> test-report.md
+          python -m pytest tests/test_mandatory.py -v --no-cov >> test-report.md || true
+          
+          echo -e "\n## Recommended Tests" >> test-report.md
+          python -m pytest tests/test_recommended.py -v --no-cov >> test-report.md || true
+          
+          echo -e "\n## Optional Tests" >> test-report.md
+          python -m pytest tests/test_optional.py -v --no-cov >> test-report.md || true
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports
+          path: |
+            ${{ env.BRANCH_NAME }}/test-report.md
+            ${{ env.BRANCH_NAME }}/coverage*.xml
+
       - name: Commit and Push App Folder
         run: |
           git add "${{ env.BRANCH_NAME }}" ports.json
