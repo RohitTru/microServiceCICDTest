@@ -2,188 +2,191 @@
 Recommended Tests
 ===============
 
-These tests SHOULD pass before code is merged.
-They represent important functionality that improves code quality and reliability.
+These tests SHOULD pass before code is merged, but won't block initial development.
+They represent important functionality that makes your code more robust and reliable.
 
 When to Use Recommended Tests:
 ---------------------------
+1. After your mandatory tests are passing
+2. When adding more complex features
+3. When improving error handling
+4. When working with multiple components
+
+All examples are commented out by default - uncomment them as you implement features.
+
+Testing Concepts Covered:
+----------------------
 1. Integration between components
-2. Complex business logic flows
-3. Error handling scenarios
-4. Data consistency checks
-5. Authentication flows
-6. Rate limiting and performance thresholds
-
-How to Write Recommended Tests:
-----------------------------
-1. Focus on component interactions
-2. Test complete workflows
-3. Verify error handling
-4. Check data consistency
-5. Test security features
-
-Example Use Cases:
-----------------
-1. Multi-step business processes
-2. User authentication flows
-3. Data transformation pipelines
-4. API integration scenarios
-
-Note: All tests below are commented out by default.
-Uncomment and modify the tests relevant to your feature.
+2. More complex validations
+3. Edge cases
+4. Data consistency
+5. State management
 """
 
 import pytest
 from datetime import datetime
 
 """
-def test_integration_trade_flow(client):
-    '''
-    Integration Flow Test
-    -------------------
-    Purpose: Test complete business workflows
-    When to use: When implementing multi-step processes
-    How to modify: Adjust steps and assertions for your workflow
-    
-    Example - Trading System:
-    1. Create trade proposal
-    2. Get approval
-    3. Execute trade
-    4. Verify results
-    
-    Example - General Use:
-    1. Create resource
-    2. Update resource
-    3. Verify changes
-    4. Delete resource
-    '''
-    # Example trade flow (uncomment and modify):
-    # trade_data = {
-    #     "symbol": "AAPL",
-    #     "type": "BUY",
-    #     "price": 150.00,
-    #     "quantity": 100
-    # }
-    
-    # # 1. Create proposal
-    # response = client.post('/api/trades/propose', json=trade_data)
-    # assert response.status_code == 201
-    # trade_id = response.json['trade_id']
-    
-    # # 2. Validate trade
-    # response = client.get(f'/api/trades/{trade_id}')
-    # assert response.status_code == 200
-    
-    # # 3. Execute trade
-    # response = client.post(f'/api/trades/{trade_id}/execute')
-    # assert response.status_code == 200
+# Example 1: Integration Test
+# -------------------------
+# When to uncomment: When your feature interacts with other components
+# What to modify: The component interactions for your feature
 
-def test_error_handling():
+def test_trade_workflow_integration(client):
     '''
-    Error Handling Test
-    -----------------
-    Purpose: Verify proper error handling
-    When to use: When adding error handling logic
-    How to modify: Add your error scenarios
+    Purpose: Test a complete trading workflow
+    What it does:
+    1. Creates a new trade
+    2. Validates the trade
+    3. Processes the trade
+    4. Checks the final state
     
-    Example - Trading System:
-    - Invalid trade parameters
-    - Insufficient funds
-    - Market closed scenarios
-    
-    Example - General Use:
-    - Invalid input data
-    - Resource not found
-    - Permission denied
+    This tests how different parts of your system work together
     '''
-    # Example error scenarios (uncomment and modify):
-    # test_cases = [
-    #     {"data": {"symbol": "INVALID"}, "expected_code": 400},
-    #     {"data": {"price": -100}, "expected_code": 400},
-    #     {"data": {"quantity": 0}, "expected_code": 400}
-    # ]
+    # Step 1: Create new trade
+    new_trade = {
+        "symbol": "AAPL",
+        "amount": 100,
+        "type": "BUY",
+        "price": 150.50
+    }
     
-    # for case in test_cases:
-    #     response = client.post('/api/trades', json=case['data'])
-    #     assert response.status_code == case['expected_code']
+    # Submit trade
+    response = client.post('/api/trades', json=new_trade)
+    assert response.status_code == 201
+    trade_id = response.json['trade_id']
+    
+    # Step 2: Check trade status
+    status_response = client.get(f'/api/trades/{trade_id}')
+    assert status_response.status_code == 200
+    assert status_response.json['status'] == 'pending'
+    
+    # Step 3: Process trade
+    process_response = client.post(f'/api/trades/{trade_id}/process')
+    assert process_response.status_code == 200
+    
+    # Step 4: Verify final state
+    final_status = client.get(f'/api/trades/{trade_id}')
+    assert final_status.json['status'] == 'completed'
 
-def test_authentication_flow():
-    '''
-    Authentication Flow Test
-    ----------------------
-    Purpose: Verify authentication process
-    When to use: When implementing auth features
-    How to modify: Adjust for your auth system
-    
-    Example - Trading System:
-    - User login
-    - Token validation
-    - Permission checks
-    
-    Example - General Use:
-    - Login process
-    - Password reset
-    - Session management
-    '''
-    # Example auth flow (uncomment and modify):
-    # login_data = {
-    #     "username": "test_user",
-    #     "password": "test_password"
-    # }
-    # response = client.post('/api/auth/login', json=login_data)
-    # assert response.status_code == 200
-    # assert 'token' in response.json
+# Example 2: Data Consistency Test
+# -----------------------------
+# When to uncomment: When your feature needs to maintain data integrity
+# What to modify: The data consistency rules for your feature
 
-def test_rate_limiting():
+def test_portfolio_consistency():
     '''
-    Rate Limiting Test
-    ----------------
-    Purpose: Verify rate limiting functionality
-    When to use: When implementing API rate limits
-    How to modify: Adjust for your rate limit rules
+    Purpose: Ensure portfolio data stays consistent after operations
+    What it does:
+    1. Records initial state
+    2. Performs operations
+    3. Verifies final state matches expectations
     
-    Example - Trading System:
-    - API call limits
-    - Trade frequency limits
-    - Data request throttling
-    
-    Example - General Use:
-    - Request frequency limits
-    - Concurrent connection limits
-    - Resource usage limits
+    This helps catch subtle bugs in data handling
     '''
-    # Example rate limit test (uncomment and modify):
-    # for _ in range(10):  # Exceed rate limit
-    #     response = client.get('/api/data')
-    # assert response.status_code == 429  # Too Many Requests
+    # Initial portfolio state
+    initial_cash = 10000.00
+    initial_stocks = {"AAPL": 100}
+    
+    # Perform trade
+    stock_price = 150.50
+    quantity = 10
+    total_cost = stock_price * quantity
+    
+    # Calculate expected final state
+    expected_cash = initial_cash - total_cost
+    expected_stocks = {"AAPL": 110}  # 100 + 10
+    
+    # Verify consistency
+    assert abs(expected_cash - final_cash) < 0.01, "Cash balance incorrect"
+    assert expected_stocks == final_stocks, "Stock quantity incorrect"
 
-def test_data_consistency():
+# Example 3: Edge Case Test
+# ----------------------
+# When to uncomment: When handling special situations
+# What to modify: The edge cases relevant to your feature
+
+def test_trade_edge_cases(client):
     '''
-    Data Consistency Test
-    -------------------
-    Purpose: Verify data integrity across operations
-    When to use: When handling complex data operations
-    How to modify: Add your data consistency checks
+    Purpose: Test unusual or boundary conditions
+    What it does:
+    1. Tests maximum values
+    2. Tests minimum values
+    3. Tests unusual inputs
     
-    Example - Trading System:
-    - Portfolio balance accuracy
-    - Trade history consistency
-    - Position calculations
-    
-    Example - General Use:
-    - Database CRUD operations
-    - Cache synchronization
-    - Data transformation accuracy
+    This helps prevent unexpected errors in production
     '''
-    # Example consistency test (uncomment and modify):
-    # # Create initial data
-    # response = client.post('/api/data', json={"value": 100})
-    # data_id = response.json['id']
+    edge_cases = [
+        {
+            "case": "Maximum trade amount",
+            "data": {"symbol": "AAPL", "amount": 1000000, "type": "BUY"},
+            "expected_status": 400
+        },
+        {
+            "case": "Minimum trade amount",
+            "data": {"symbol": "AAPL", "amount": 0.01, "type": "SELL"},
+            "expected_status": 400
+        },
+        {
+            "case": "Invalid symbol",
+            "data": {"symbol": "INVALID123", "amount": 100, "type": "BUY"},
+            "expected_status": 400
+        }
+    ]
     
-    # # Update data
-    # client.put(f'/api/data/{data_id}', json={"value": 200})
+    for case in edge_cases:
+        response = client.post('/api/trades', json=case['data'])
+        assert response.status_code == case['expected_status'], f"Failed for {case['case']}"
+
+# Example 4: State Management Test
+# ----------------------------
+# When to uncomment: When your feature manages state changes
+# What to modify: The state transitions for your feature
+
+def test_trade_state_transitions(client):
+    '''
+    Purpose: Verify correct state transitions
+    What it does:
+    1. Tests each valid state change
+    2. Tests invalid state changes
+    3. Verifies state consistency
     
-    # # Verify consistency
-    # response = client.get(f'/api/data/{data_id}')
-    # assert response.json['value'] == 200
+    This ensures your feature handles state changes correctly
+    '''
+    # Create a trade
+    trade_data = {"symbol": "AAPL", "amount": 100, "type": "BUY"}
+    response = client.post('/api/trades', json=trade_data)
+    trade_id = response.json['trade_id']
+    
+    # Valid state transitions
+    valid_transitions = [
+        ('new', 'pending'),
+        ('pending', 'processing'),
+        ('processing', 'completed')
+    ]
+    
+    for from_state, to_state in valid_transitions:
+        response = client.post(f'/api/trades/{trade_id}/state', 
+                             json={"state": to_state})
+        assert response.status_code == 200, f"Failed to transition from {from_state} to {to_state}"
+    
+    # Invalid state transition
+    response = client.post(f'/api/trades/{trade_id}/state', 
+                         json={"state": "new"})
+    assert response.status_code == 400, "Should not allow invalid state transition"
 """
+
+# Note for developers:
+# ------------------
+# How to use these examples:
+# 1. Start with simpler tests in test_mandatory.py
+# 2. Once those pass, look at these more complex examples
+# 3. Uncomment and modify the example closest to your needs
+# 4. Add your own tests following similar patterns
+#
+# Tips for recommended tests:
+# - Test how components work together
+# - Verify data stays consistent
+# - Handle edge cases
+# - Check state changes
+# - Think about real-world scenarios

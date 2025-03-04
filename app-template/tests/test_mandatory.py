@@ -3,31 +3,22 @@ Mandatory Tests
 ==============
 
 These tests MUST pass before any code can be merged.
-They represent the minimum requirements for code quality and functionality.
+They focus on the most basic and critical functionality of your application.
 
-When to Use Mandatory Tests:
----------------------------
-1. Basic API health and connectivity checks
-2. Critical data validation
-3. Core business logic that must never fail
-4. Security-critical validations
+For Beginners (How to Use This File):
+-----------------------------------
+1. Start with the test_health_check - it's enabled and works with the template
+2. When adding new features, look at the example tests below
+3. Uncomment and modify the example that matches what you're building
+4. Each example shows a different type of test you might need
 
-How to Write Mandatory Tests:
----------------------------
-1. Keep them focused and minimal
-2. Test only what's absolutely necessary
-3. Avoid complex setup requirements
-4. Make them fast and reliable
-
-Example Use Cases:
-----------------
-1. Health check endpoint verification
-2. Basic authentication validation
-3. Critical data model constraints
-4. Core API endpoint existence
-
-Note: Uncomment and modify example tests as needed for your feature.
-Only the health check test is enabled by default.
+Testing Basics:
+-------------
+1. Each test function starts with 'test_'
+2. Use descriptive names for your test functions
+3. Each test should check one specific thing
+4. Use assert statements to check if something is true
+5. Add clear comments to explain what you're testing
 """
 
 import pytest
@@ -35,117 +26,148 @@ from datetime import datetime
 
 def test_health_check(client):
     """
-    Health Check Test
+    Health Check Test (ENABLED)
     ----------------
-    Purpose: Verify the basic API connectivity and health
-    When to use: Always enabled, basic service health verification
-    How to modify: Generally shouldn't need modification
+    Purpose: Verify that our API is up and running
+    What it does: Makes a GET request to /health and checks the response
+    Why it matters: If this fails, nothing else will work!
+    
+    Note: This is the only test enabled by default because it matches
+    the endpoint that exists in the template app.py
     """
     response = client.get('/health')
     assert response.status_code == 200
     assert response.json['status'] == 'healthy'
 
 """
-def test_critical_routes(client):
-    '''
-    Critical Routes Test
-    ------------------
-    Purpose: Verify that essential API endpoints exist
-    When to use: When adding new critical endpoints
-    How to modify: Add your critical endpoint checks
-    
-    Example - Trading System:
-    - Check trade creation endpoint
-    - Check order status endpoint
-    - Check account balance endpoint
-    
-    Example - General Use:
-    - Check user authentication endpoint
-    - Check main data retrieval endpoint
-    - Check status update endpoint
-    '''
-    # Basic API endpoint check
-    response = client.get('/api')
-    assert response.status_code in [200, 404]
-    
-    # Example critical endpoints (uncomment and modify):
-    # response = client.get('/api/trades')
-    # assert response.status_code in [200, 401, 403]
-    
-    # response = client.get('/api/account/balance')
-    # assert response.status_code in [200, 401]
+# Example 1: API Endpoint Test
+# ---------------------------
+# When to uncomment: After adding a new API endpoint
+# What to modify: The endpoint URL and expected response
 
-def test_basic_data_validation(client):
+def test_get_trade_endpoint(client):
     '''
-    Data Validation Test
-    ------------------
-    Purpose: Verify basic data validation rules
-    When to use: When adding new data input endpoints
-    How to modify: Add your data validation scenarios
+    Purpose: Test if your new API endpoint works
+    What it does: 
+    1. Sends a request to your endpoint
+    2. Checks if it gets the right response
+    3. Validates the response format
     
-    Example - Trading System:
-    - Validate trade order format
-    - Check price/quantity constraints
-    - Verify symbol format
-    
-    Example - General Use:
-    - Check required fields
-    - Validate data types
-    - Check field length limits
+    Example: Testing a GET /api/trade endpoint
     '''
-    # Example validation tests (uncomment and modify):
-    # response = client.post('/api/trades/propose', json={})
-    # assert response.status_code == 400  # Empty payload
+    # Make a request to your endpoint
+    response = client.get('/api/trade')
     
-    # invalid_data = {"type": "INVALID"}
-    # response = client.post('/api/trades/propose', json=invalid_data)
-    # assert response.status_code == 400  # Invalid data
+    # Check if request was successful
+    assert response.status_code == 200, "API should return 200 OK"
+    
+    # Check if response has the right format
+    assert 'trades' in response.json, "Response should have 'trades' field"
+    assert isinstance(response.json['trades'], list), "Trades should be a list"
 
-def test_critical_business_logic():
-    '''
-    Critical Business Logic Test
-    -------------------------
-    Purpose: Verify core business rules
-    When to use: When implementing critical business logic
-    How to modify: Add your business rule validations
-    
-    Example - Trading System:
-    - Verify trade limits
-    - Check risk calculations
-    - Validate position sizing
-    
-    Example - General Use:
-    - Check permission rules
-    - Verify calculation accuracy
-    - Test state transitions
-    '''
-    # Example business logic test (uncomment and modify):
-    # trade_data = {
-    #     "symbol": "AAPL",
-    #     "type": "BUY",
-    #     "price": 150.00
-    # }
-    # Add your critical business logic tests here
+# Example 2: Data Validation Test
+# -----------------------------
+# When to uncomment: When adding data validation to your feature
+# What to modify: The validation rules for your data
 
-def test_security_critical():
+def test_trade_data_validation():
     '''
-    Security Critical Test
-    --------------------
-    Purpose: Verify basic security requirements
-    When to use: When implementing security-critical features
-    How to modify: Add your security validation checks
-    
-    Example - Trading System:
-    - Verify trade authorization
-    - Check position limits
-    - Validate user permissions
-    
-    Example - General Use:
-    - Test authentication requirements
-    - Check authorization rules
-    - Verify data access controls
+    Purpose: Ensure trade data is valid before processing
+    What it does:
+    1. Creates sample trade data
+    2. Checks if all required fields are present
+    3. Validates data types and values
     '''
-    # Example security test (uncomment and modify):
-    # response = client.get('/api/protected')
-    # assert response.status_code == 401  # Should require auth
+    # Example trade data - modify for your feature
+    trade = {
+        "symbol": "AAPL",
+        "amount": 100,
+        "type": "BUY",
+        "price": 150.50
+    }
+    
+    # Required field checks
+    required_fields = ["symbol", "amount", "type", "price"]
+    for field in required_fields:
+        assert field in trade, f"Trade must include {field}"
+    
+    # Data type checks
+    assert isinstance(trade["symbol"], str), "Symbol must be a string"
+    assert isinstance(trade["amount"], (int, float)), "Amount must be a number"
+    assert isinstance(trade["price"], float), "Price must be a float"
+    
+    # Value range checks
+    assert trade["amount"] > 0, "Amount must be positive"
+    assert trade["price"] > 0, "Price must be positive"
+    assert trade["type"] in ["BUY", "SELL"], "Type must be BUY or SELL"
+
+# Example 3: Calculation Test
+# -------------------------
+# When to uncomment: When adding calculations to your feature
+# What to modify: The calculation logic and expected results
+
+def test_trade_calculations():
+    '''
+    Purpose: Verify trading calculations are correct
+    What it does:
+    1. Sets up test values
+    2. Performs calculations
+    3. Compares with expected results
+    '''
+    # Test data
+    price = 150.50
+    quantity = 10
+    commission_rate = 0.01  # 1%
+    
+    # Calculate total cost
+    subtotal = price * quantity
+    commission = subtotal * commission_rate
+    total = subtotal + commission
+    
+    # Verify calculations (rounded to 2 decimal places)
+    assert round(subtotal, 2) == 1505.00, "Subtotal calculation incorrect"
+    assert round(commission, 2) == 15.05, "Commission calculation incorrect"
+    assert round(total, 2) == 1520.05, "Total calculation incorrect"
+
+# Example 4: Error Handling Test
+# ---------------------------
+# When to uncomment: When adding error handling to your feature
+# What to modify: The error conditions and expected responses
+
+def test_trade_error_handling(client):
+    '''
+    Purpose: Ensure your feature handles errors properly
+    What it does:
+    1. Tests various error conditions
+    2. Verifies proper error responses
+    3. Checks error message format
+    '''
+    # Test invalid trade data
+    invalid_trade = {
+        "symbol": "",  # Empty symbol
+        "amount": -100,  # Negative amount
+        "type": "INVALID"  # Invalid type
+    }
+    
+    # Make request with invalid data
+    response = client.post('/api/trade', json=invalid_trade)
+    
+    # Check error response
+    assert response.status_code == 400, "Should return 400 for invalid data"
+    assert 'error' in response.json, "Should include error message"
+    assert isinstance(response.json['error'], str), "Error should be string"
 """
+
+# Note for developers:
+# ------------------
+# How to add your own test:
+# 1. Look at the examples above and find one similar to what you need
+# 2. Copy and uncomment the example
+# 3. Modify it for your feature
+# 4. Make sure to test all important aspects of your feature
+#
+# Remember:
+# - Start simple: Test the most basic functionality first
+# - Be specific: Each test should check one thing
+# - Add comments: Help others understand your test
+# - Use descriptive names: Make it clear what you're testing
