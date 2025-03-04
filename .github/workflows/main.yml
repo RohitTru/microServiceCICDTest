@@ -130,19 +130,69 @@ jobs:
         run: |
           cd ${{ env.BRANCH_NAME }}
           mkdir -p tests/test-reports
+          
           echo "# Test Results Summary" > tests/test-reports/test-report.md
-          echo "## Mandatory Tests" >> tests/test-reports/test-report.md
-          python -m pytest tests/test_mandatory.py -v --no-cov >> tests/test-reports/test-report.md || true
+          echo "Generated at: $(date)" >> tests/test-reports/test-report.md
+          echo "\n## Overview" >> tests/test-reports/test-report.md
           
-          echo -e "\n## Recommended Tests" >> tests/test-reports/test-report.md
-          python -m pytest tests/test_recommended.py -v --no-cov >> tests/test-reports/test-report.md || true
+          # Run and report mandatory tests
+          echo "\n### 🔒 Mandatory Tests" >> tests/test-reports/test-report.md
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          python -m pytest tests/test_mandatory.py -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
+          MANDATORY_EXIT=${PIPESTATUS[0]}
+          echo "\`\`\`" >> tests/test-reports/test-report.md
           
-          echo -e "\n## Optional Tests" >> tests/test-reports/test-report.md
-          python -m pytest tests/test_optional.py -v --no-cov >> tests/test-reports/test-report.md || true
+          # Run and report recommended tests
+          echo "\n### 📝 Recommended Tests" >> tests/test-reports/test-report.md
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          python -m pytest tests/test_recommended.py -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
+          RECOMMENDED_EXIT=${PIPESTATUS[0]}
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          
+          # Run and report optional tests
+          echo "\n### ⭐ Optional Tests" >> tests/test-reports/test-report.md
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          python -m pytest tests/test_optional.py -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
+          OPTIONAL_EXIT=${PIPESTATUS[0]}
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          
+          # Generate coverage reports
+          echo "\n## Coverage Reports" >> tests/test-reports/test-report.md
+          
+          echo "\n### Mandatory Tests Coverage" >> tests/test-reports/test-report.md
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          coverage report >> tests/test-reports/test-report.md
+          echo "\`\`\`" >> tests/test-reports/test-report.md
+          
+          # Add test status summary
+          echo "\n## Test Status Summary" >> tests/test-reports/test-report.md
+          echo "| Test Type | Status |" >> tests/test-reports/test-report.md
+          echo "|-----------|--------|" >> tests/test-reports/test-report.md
+          if [ $MANDATORY_EXIT -eq 0 ]; then
+            echo "| Mandatory | ✅ Passed |" >> tests/test-reports/test-report.md
+          else
+            echo "| Mandatory | ❌ Failed |" >> tests/test-reports/test-report.md
+          fi
+          if [ $RECOMMENDED_EXIT -eq 0 ]; then
+            echo "| Recommended | ✅ Passed |" >> tests/test-reports/test-report.md
+          else
+            echo "| Recommended | ⚠️ Some tests failed |" >> tests/test-reports/test-report.md
+          fi
+          if [ $OPTIONAL_EXIT -eq 0 ]; then
+            echo "| Optional | ✅ Passed |" >> tests/test-reports/test-report.md
+          else
+            echo "| Optional | ℹ️ Some tests failed |" >> tests/test-reports/test-report.md
+          fi
           
           # Move .coverage file if it exists
           if [ -f ".coverage" ]; then
             mv .coverage tests/test-reports/.coverage
+          fi
+          
+          # Exit with error if mandatory tests failed
+          if [ $MANDATORY_EXIT -ne 0 ]; then
+            echo "❌ Mandatory tests failed. Please fix before merging."
+            exit 1
           fi
 
       - name: Upload Test Reports
@@ -154,6 +204,28 @@ jobs:
             ${{ env.BRANCH_NAME }}/tests/test-reports/
             ${{ env.BRANCH_NAME }}/tests/test-reports/.coverage
             ${{ env.BRANCH_NAME }}/tests/test-reports/coverage*.xml
+
+      - name: Comment PR with Test Results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const testReport = fs.readFileSync('${{ env.BRANCH_NAME }}/tests/test-reports/test-report.md', 'utf8');
+            
+            const comment = `## 🧪 Test Results
+            
+            ${testReport}
+            
+            [View detailed test reports](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
 
       - name: Commit Test Reports
         run: |
