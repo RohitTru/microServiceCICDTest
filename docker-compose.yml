@@ -27,15 +27,8 @@ services:
     ports:
       - "${APP_PORT}:${APP_PORT}"
     environment:
-      - VIRTUAL_HOST=${VIRTUAL_HOST}
-      - VIRTUAL_PORT=${APP_PORT}
-      - ENABLE_SSL=${ENABLE_SSL:-false}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${APP_NAME}.rule=Host(`${VIRTUAL_HOST}`)"
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}"
-    depends_on:
-      - redis
+      - APP_PORT=${APP_PORT:-5000}
+      - FLASK_ENV=${FLASK_ENV:-production}
     networks:
       - app-network
     healthcheck:
@@ -44,18 +37,18 @@ services:
       timeout: 10s
       retries: 3
 
-  # Nginx Proxy (Automated Reverse Proxy)
+  # Nginx Proxy (Only in non-test environments)
   nginx:
     image: jwilder/nginx-proxy:latest
     container_name: nginx-proxy
     restart: always
+    profiles:
+      - production
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock:ro  # Automatic discovery
+      - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./certs:/etc/ssl/certs:ro
-    environment:
-      - DEFAULT_HOST=default.emerginary.com
     networks:
       - app-network
