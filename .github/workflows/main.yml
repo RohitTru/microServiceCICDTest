@@ -112,8 +112,11 @@ jobs:
           git commit -m "Update port assignments for $BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
           git push origin master
           
-          # Return to original branch
+          # Return to original branch and sync ports.json
           git checkout $BRANCH_NAME
+          git checkout master -- ports.json
+          git commit -m "Sync ports.json from master" || echo "No changes to commit"
+          git push origin $BRANCH_NAME || echo "Could not push to feature branch"
 
       - name: Create App Folder and .env
         run: |
