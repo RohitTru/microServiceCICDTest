@@ -1,7 +1,8 @@
 {
   "port_assignments": {
     "master": 5002,
-    "feature-test-infra": 5000
+    "feature-test-infra": 5000,
+    "feature-nginx-test": 5001
   },
   "available_ports": {
     "start": 5000,
