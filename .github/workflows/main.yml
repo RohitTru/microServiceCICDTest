@@ -109,21 +109,21 @@ jobs:
         run: |
           cd ${{ env.BRANCH_NAME }}
           echo "Running mandatory tests..."
-          python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml -v || exit 1
+          python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml:test-reports/coverage-mandatory.xml -v || exit 1
 
       - name: Run Recommended Tests
         continue-on-error: true
         run: |
           cd ${{ env.BRANCH_NAME }}
           echo "Running recommended tests..."
-          python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:coverage-recommended.xml -v
+          python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:test-reports/coverage-recommended.xml -v
 
       - name: Run Optional Tests
         continue-on-error: true
         run: |
           cd ${{ env.BRANCH_NAME }}
           echo "Running optional tests..."
-          python -m pytest tests/test_optional.py --cov=. --cov-report=xml:coverage-optional.xml -v
+          python -m pytest tests/test_optional.py --cov=. --cov-report=xml:test-reports/coverage-optional.xml -v
 
       - name: Generate Test Report
         if: always()
