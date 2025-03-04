@@ -51,25 +51,6 @@ for APP_DIR in $FEATURE_APPS; do
         echo "⚠️ No requirements.txt found in $APP_DIR. Skipping dependency installation."
     fi
 
-    # Ensure pre-commit is installed
-    if ! command -v pre-commit &> /dev/null; then
-        echo "⚠️ pre-commit not found! Installing now..."
-        pip install pre-commit
-        if ! command -v pre-commit &> /dev/null; then
-            echo "❌ ERROR: pre-commit failed to install. Exiting..."
-            cd ..
-            continue
-        fi
-    fi
-
-    # Install and activate pre-commit hooks
-    if [ ! -f .git/hooks/pre-commit ]; then
-        pre-commit install
-        echo "✅ Pre-commit hooks installed!"
-    else
-        echo "🔄 Pre-commit hooks already installed. Skipping..."
-    fi
-
     echo "✅ Virtual environment set up inside $APP_DIR and ready to go!"
     
     # Move back to the root directory for the next loop iteration
