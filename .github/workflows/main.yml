@@ -109,36 +109,41 @@ jobs:
         run: |
           cd ${{ env.BRANCH_NAME }}
           echo "Running mandatory tests..."
-          python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml:test-reports/coverage-mandatory.xml -v || exit 1
+          python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml:tests/test-reports/coverage-mandatory.xml -v || exit 1
 
       - name: Run Recommended Tests
         continue-on-error: true
         run: |
           cd ${{ env.BRANCH_NAME }}
           echo "Running recommended tests..."
-          python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:test-reports/coverage-recommended.xml -v
+          python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:tests/test-reports/coverage-recommended.xml -v
 
       - name: Run Optional Tests
         continue-on-error: true
         run: |
           cd ${{ env.BRANCH_NAME }}
           echo "Running optional tests..."
-          python -m pytest tests/test_optional.py --cov=. --cov-report=xml:test-reports/coverage-optional.xml -v
+          python -m pytest tests/test_optional.py --cov=. --cov-report=xml:tests/test-reports/coverage-optional.xml -v
 
       - name: Generate Test Report
         if: always()
         run: |
           cd ${{ env.BRANCH_NAME }}
-          mkdir -p test-reports
-          echo "# Test Results Summary" > test-reports/test-report.md
-          echo "## Mandatory Tests" >> test-reports/test-report.md
-          python -m pytest tests/test_mandatory.py -v --no-cov >> test-reports/test-report.md || true
+          mkdir -p tests/test-reports
+          echo "# Test Results Summary" > tests/test-reports/test-report.md
+          echo "## Mandatory Tests" >> tests/test-reports/test-report.md
+          python -m pytest tests/test_mandatory.py -v --no-cov >> tests/test-reports/test-report.md || true
           
-          echo -e "\n## Recommended Tests" >> test-reports/test-report.md
-          python -m pytest tests/test_recommended.py -v --no-cov >> test-reports/test-report.md || true
+          echo -e "\n## Recommended Tests" >> tests/test-reports/test-report.md
+          python -m pytest tests/test_recommended.py -v --no-cov >> tests/test-reports/test-report.md || true
           
-          echo -e "\n## Optional Tests" >> test-reports/test-report.md
-          python -m pytest tests/test_optional.py -v --no-cov >> test-reports/test-report.md || true
+          echo -e "\n## Optional Tests" >> tests/test-reports/test-report.md
+          python -m pytest tests/test_optional.py -v --no-cov >> tests/test-reports/test-report.md || true
+          
+          # Move .coverage file if it exists
+          if [ -f ".coverage" ]; then
+            mv .coverage tests/test-reports/.coverage
+          fi
 
       - name: Upload Test Reports
         if: always()
@@ -146,15 +151,16 @@ jobs:
         with:
           name: test-reports
           path: |
-            ${{ env.BRANCH_NAME }}/test-reports/test-report.md
-            ${{ env.BRANCH_NAME }}/test-reports/coverage*.xml
+            ${{ env.BRANCH_NAME }}/tests/test-reports/
+            ${{ env.BRANCH_NAME }}/tests/test-reports/.coverage
+            ${{ env.BRANCH_NAME }}/tests/test-reports/coverage*.xml
 
       - name: Commit Test Reports
         run: |
           cd ${{ env.BRANCH_NAME }}
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add test-reports
+          git add tests/test-reports
           git commit -m "Add test reports for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
