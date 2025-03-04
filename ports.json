@@ -2,8 +2,7 @@
   "port_assignments": {
     "master": 5002,
     "feature-test": 5000,
-    "feature-test-infrastructure": 5001,
-    "feature-test-infra": 5003
+    "feature-test-infrastructure": 5001
   },
   "available_ports": {
     "start": 5000,
