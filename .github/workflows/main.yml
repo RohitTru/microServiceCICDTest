@@ -191,6 +191,14 @@ jobs:
           rm -rf "./${{ env.BRANCH_NAME }}" || true
           rm -rf "./master" || true
 
+      - name: Move Coverage File
+        if: always()
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          if [ -f .coverage ]; then
+            mv .coverage test-reports/.coverage
+          fi
+
   cleanup:
     if: github.event_name == 'delete'
     runs-on: ubuntu-latest
