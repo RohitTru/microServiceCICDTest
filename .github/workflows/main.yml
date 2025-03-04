@@ -129,15 +129,16 @@ jobs:
         if: always()
         run: |
           cd ${{ env.BRANCH_NAME }}
-          echo "# Test Results Summary" > test-report.md
-          echo "## Mandatory Tests" >> test-report.md
-          python -m pytest tests/test_mandatory.py -v --no-cov >> test-report.md || true
+          mkdir -p test-reports
+          echo "# Test Results Summary" > test-reports/test-report.md
+          echo "## Mandatory Tests" >> test-reports/test-report.md
+          python -m pytest tests/test_mandatory.py -v --no-cov >> test-reports/test-report.md || true
           
-          echo -e "\n## Recommended Tests" >> test-report.md
-          python -m pytest tests/test_recommended.py -v --no-cov >> test-report.md || true
+          echo -e "\n## Recommended Tests" >> test-reports/test-report.md
+          python -m pytest tests/test_recommended.py -v --no-cov >> test-reports/test-report.md || true
           
-          echo -e "\n## Optional Tests" >> test-report.md
-          python -m pytest tests/test_optional.py -v --no-cov >> test-report.md || true
+          echo -e "\n## Optional Tests" >> test-reports/test-report.md
+          python -m pytest tests/test_optional.py -v --no-cov >> test-reports/test-report.md || true
 
       - name: Upload Test Reports
         if: always()
@@ -145,8 +146,17 @@ jobs:
         with:
           name: test-reports
           path: |
-            ${{ env.BRANCH_NAME }}/test-report.md
-            ${{ env.BRANCH_NAME }}/coverage*.xml
+            ${{ env.BRANCH_NAME }}/test-reports/test-report.md
+            ${{ env.BRANCH_NAME }}/test-reports/coverage*.xml
+
+      - name: Commit Test Reports
+        run: |
+          cd ${{ env.BRANCH_NAME }}
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add test-reports
+          git commit -m "Add test reports for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin HEAD:${{ env.BRANCH_NAME }}
 
       - name: Commit and Push App Folder
         run: |
