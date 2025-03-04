@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - "feature-*"
+      - "staging"
+      - "master"
+  pull_request:
+    types: [opened, synchronize, closed]
+    branches:
+      - "staging"
+      - "master"
   delete:
     branches:
       - "feature-*"
@@ -24,8 +31,32 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Extract Branch Name
-        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+      - name: Extract Branch and Environment Info
+        run: |
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+          
+          # Determine environment based on branch
+          if [[ "${GITHUB_REF#refs/heads/}" == "master" ]]; then
+            echo "TARGET_ENV=production" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF#refs/heads/}" == "staging" ]]; then
+            echo "TARGET_ENV=staging" >> $GITHUB_ENV
+          else
+            echo "TARGET_ENV=development" >> $GITHUB_ENV
+          fi
+          
+          # For pull requests, determine source and target environments
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "SOURCE_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
+            echo "TARGET_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
+            
+            if [[ "${{ github.base_ref }}" == "master" ]]; then
+              echo "TARGET_ENV=production" >> $GITHUB_ENV
+              echo "SOURCE_ENV=staging" >> $GITHUB_ENV
+            elif [[ "${{ github.base_ref }}" == "staging" ]]; then
+              echo "TARGET_ENV=staging" >> $GITHUB_ENV
+              echo "SOURCE_ENV=development" >> $GITHUB_ENV
+            fi
+          fi
 
       - name: Generate Version Info
         run: |
@@ -55,27 +86,34 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
 
-      - name: Update Port Assignments
+      - name: Handle Port Assignment
         run: |
-          # Switch to master to update ports.json
-          git checkout master
-          
-          # Ensure we have latest master
-          git pull origin master
-          
           chmod +x scripts/port_manager.py
-          ./scripts/port_manager.py assign ${{ env.BRANCH_NAME }} >> $GITHUB_ENV
+          
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
+            # Handle port migration for merged PRs
+            echo "Migrating port for merged PR from $SOURCE_ENV to $TARGET_ENV"
+            ./scripts/port_manager.py migrate "$SOURCE_BRANCH" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
+            
+            # Release the old port from source environment
+            ./scripts/port_manager.py release "$SOURCE_BRANCH" "$SOURCE_ENV"
+          else
+            # Normal port assignment for push events
+            echo "Assigning port for $BRANCH_NAME in $TARGET_ENV"
+            ./scripts/port_manager.py assign "$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+          fi
+          
           echo "Assigned port: ${{ env.APP_PORT }}"
           
-          # Commit and push ports.json to master
+          # Commit port changes to master
+          git checkout master
+          git pull origin master
           git add ports.json
-          git commit -m "Update port assignments for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git commit -m "Update port assignments for $BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
           git push origin master
           
-          # Switch back to feature branch
-          git checkout ${{ env.BRANCH_NAME }}
-          # Ensure feature branch has updated ports.json
-          git checkout master -- ports.json
+          # Return to original branch
+          git checkout $BRANCH_NAME
 
       - name: Create App Folder and .env
         run: |
@@ -326,22 +364,36 @@ jobs:
           rm -rf "./master" || true
 
   cleanup:
-    if: github.event_name == 'delete'
+    if: github.event_name == 'delete' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == false)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Get all branches
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Extract Branch Name
-        run: echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
+      - name: Extract Branch Info
+        run: |
+          if [[ "${{ github.event_name }}" == "delete" ]]; then
+            echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
+          else
+            echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+          fi
+          
+          # Determine environment
+          if [[ "$BRANCH_NAME" == "master" ]]; then
+            echo "SOURCE_ENV=production" >> $GITHUB_ENV
+          elif [[ "$BRANCH_NAME" == "staging" ]]; then
+            echo "SOURCE_ENV=staging" >> $GITHUB_ENV
+          else
+            echo "SOURCE_ENV=development" >> $GITHUB_ENV
+          fi
 
       - name: Setup Git
         run: |
@@ -350,16 +402,14 @@ jobs:
 
       - name: Release Port
         run: |
-          # Ensure we're on master
           git checkout master
           git pull origin master
           
           chmod +x scripts/port_manager.py
-          ./scripts/port_manager.py release ${{ env.BRANCH_NAME }}
+          ./scripts/port_manager.py release "$BRANCH_NAME" "$SOURCE_ENV"
           
-          # Commit the updated ports.json after port release
           git add ports.json
-          git commit -m "Release port for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git commit -m "Release port for $BRANCH_NAME in $SOURCE_ENV" || echo "No changes to commit"
           git push origin master
 
       - name: Log in to Docker Hub
@@ -370,10 +420,10 @@ jobs:
 
       - name: Remove Docker Resources
         run: |
-          echo "Cleaning up Docker resources for ${{ env.BRANCH_NAME }}..."
-          docker rm -f ${{ env.BRANCH_NAME }} || true
-          docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest || true
-          docker rmi rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:* || true  # Remove all version tags
+          echo "Cleaning up Docker resources for $BRANCH_NAME..."
+          docker rm -f $BRANCH_NAME || true
+          docker rmi rohittru/microservicecicdtest_${BRANCH_NAME}:latest || true
+          docker rmi rohittru/microservicecicdtest_${BRANCH_NAME}:* || true  # Remove all version tags
 
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "${{ secrets.DOCKER_HUB_USERNAME }}", "password": "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}"}' \
@@ -382,7 +432,7 @@ jobs:
           if [ -n "$TOKEN" ]; then
             curl -s -X DELETE \
               -H "Authorization: Bearer $TOKEN" \
-              "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}/"
+              "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${BRANCH_NAME}/"
           fi
 
       - name: Remove App Folder from GitHub Repo
@@ -390,6 +440,6 @@ jobs:
           echo "Removing app folder from repository..."
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git rm -rf "./${{ env.BRANCH_NAME }}" || echo "No app folder to remove"
-          git commit -m "Cleanup: Removed app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git rm -rf "./${BRANCH_NAME}" || echo "No app folder to remove"
+          git commit -m "Cleanup: Removed app folder for $BRANCH_NAME" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"

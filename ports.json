@@ -1,11 +1,30 @@
 {
-  "port_assignments": {
-    "master": 5002,
-    "feature-test-infra": 5000,
-    "feature-nginx-test": 5001
-  },
-  "available_ports": {
-    "start": 5000,
-    "end": 6000
+  "environments": {
+    "development": {
+      "port_range": {
+        "start": 5000,
+        "end": 5999
+      },
+      "assignments": {
+        "feature-test-infra": 5000,
+        "feature-nginx-test": 5001
+      }
+    },
+    "staging": {
+      "port_range": {
+        "start": 6000,
+        "end": 6999
+      },
+      "assignments": {}
+    },
+    "production": {
+      "port_range": {
+        "start": 7000,
+        "end": 7999
+      },
+      "assignments": {
+        "master": 7000
+      }
+    }
   }
 }
