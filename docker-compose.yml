@@ -50,5 +50,7 @@ services:
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./certs:/etc/ssl/certs:ro
+      - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - "./${APP_NAME}/nginx/conf.d:/etc/nginx/conf.d/service-specific:ro"
     networks:
       - app-network
