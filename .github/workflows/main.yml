@@ -108,22 +108,38 @@ jobs:
       - name: Run Mandatory Tests
         run: |
           cd ${{ env.BRANCH_NAME }}
-          echo "Running mandatory tests..."
-          python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml:tests/test-reports/coverage-mandatory.xml -v || exit 1
+          echo "Running mandatory tests from feature branch..."
+          # Find and run mandatory tests from the feature branch
+          if [ -f "../${{ env.BRANCH_NAME }}/tests/test_mandatory.py" ]; then
+            python -m pytest "../${{ env.BRANCH_NAME }}/tests/test_mandatory.py" --cov=. --cov-report=xml:tests/test-reports/coverage-mandatory.xml -v || exit 1
+          else
+            echo "No mandatory tests found in ${{ env.BRANCH_NAME }}/tests/"
+            exit 1
+          fi
 
       - name: Run Recommended Tests
         continue-on-error: true
         run: |
           cd ${{ env.BRANCH_NAME }}
-          echo "Running recommended tests..."
-          python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:tests/test-reports/coverage-recommended.xml -v
+          echo "Running recommended tests from feature branch..."
+          # Find and run recommended tests from the feature branch
+          if [ -f "../${{ env.BRANCH_NAME }}/tests/test_recommended.py" ]; then
+            python -m pytest "../${{ env.BRANCH_NAME }}/tests/test_recommended.py" --cov=. --cov-report=xml:tests/test-reports/coverage-recommended.xml -v
+          else
+            echo "No recommended tests found in ${{ env.BRANCH_NAME }}/tests/"
+          fi
 
       - name: Run Optional Tests
         continue-on-error: true
         run: |
           cd ${{ env.BRANCH_NAME }}
-          echo "Running optional tests..."
-          python -m pytest tests/test_optional.py --cov=. --cov-report=xml:tests/test-reports/coverage-optional.xml -v
+          echo "Running optional tests from feature branch..."
+          # Find and run optional tests from the feature branch
+          if [ -f "../${{ env.BRANCH_NAME }}/tests/test_optional.py" ]; then
+            python -m pytest "../${{ env.BRANCH_NAME }}/tests/test_optional.py" --cov=. --cov-report=xml:tests/test-reports/coverage-optional.xml -v
+          else
+            echo "No optional tests found in ${{ env.BRANCH_NAME }}/tests/"
+          fi
 
       - name: Generate Test Report
         if: always()
@@ -138,22 +154,37 @@ jobs:
           # Run and report mandatory tests
           echo "\n### 🔒 Mandatory Tests" >> tests/test-reports/test-report.md
           echo "\`\`\`" >> tests/test-reports/test-report.md
-          python -m pytest tests/test_mandatory.py -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
-          MANDATORY_EXIT=${PIPESTATUS[0]}
+          if [ -f "../${{ env.BRANCH_NAME }}/tests/test_mandatory.py" ]; then
+            python -m pytest "../${{ env.BRANCH_NAME }}/tests/test_mandatory.py" -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
+            MANDATORY_EXIT=${PIPESTATUS[0]}
+          else
+            echo "No mandatory tests found in ${{ env.BRANCH_NAME }}/tests/" | tee -a tests/test-reports/test-report.md
+            MANDATORY_EXIT=1
+          fi
           echo "\`\`\`" >> tests/test-reports/test-report.md
           
           # Run and report recommended tests
           echo "\n### 📝 Recommended Tests" >> tests/test-reports/test-report.md
           echo "\`\`\`" >> tests/test-reports/test-report.md
-          python -m pytest tests/test_recommended.py -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
-          RECOMMENDED_EXIT=${PIPESTATUS[0]}
+          if [ -f "../${{ env.BRANCH_NAME }}/tests/test_recommended.py" ]; then
+            python -m pytest "../${{ env.BRANCH_NAME }}/tests/test_recommended.py" -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
+            RECOMMENDED_EXIT=${PIPESTATUS[0]}
+          else
+            echo "No recommended tests found in ${{ env.BRANCH_NAME }}/tests/" | tee -a tests/test-reports/test-report.md
+            RECOMMENDED_EXIT=0
+          fi
           echo "\`\`\`" >> tests/test-reports/test-report.md
           
           # Run and report optional tests
           echo "\n### ⭐ Optional Tests" >> tests/test-reports/test-report.md
           echo "\`\`\`" >> tests/test-reports/test-report.md
-          python -m pytest tests/test_optional.py -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
-          OPTIONAL_EXIT=${PIPESTATUS[0]}
+          if [ -f "../${{ env.BRANCH_NAME }}/tests/test_optional.py" ]; then
+            python -m pytest "../${{ env.BRANCH_NAME }}/tests/test_optional.py" -v --no-cov 2>&1 | tee -a tests/test-reports/test-report.md
+            OPTIONAL_EXIT=${PIPESTATUS[0]}
+          else
+            echo "No optional tests found in ${{ env.BRANCH_NAME }}/tests/" | tee -a tests/test-reports/test-report.md
+            OPTIONAL_EXIT=0
+          fi
           echo "\`\`\`" >> tests/test-reports/test-report.md
           
           # Generate coverage reports
