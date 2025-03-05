@@ -15,8 +15,7 @@
         "end": 6999
       },
       "assignments": {
-        "staging": 6000,
-        "refs/pull/2/merge": 6001
+        "staging": 6000
       }
     },
     "production": {
@@ -25,8 +24,7 @@
         "end": 7999
       },
       "assignments": {
-        "master": 7000,
-        "microServiceCICDTest/master": 7002
+        "master": 7000
       }
     }
   }

@@ -620,189 +620,78 @@ jobs:
           echo "✅ Cleaned up abandoned feature $FEATURE_BRANCH from staging"
 
   handle-staging-pr:
-    name: Handle Staging PR Merge
+    name: Handle Staging PR
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    if: |
-      github.event_name == 'pull_request' && 
-      github.base_ref == 'staging' &&
-      github.event.action == 'opened' || github.event.action == 'synchronize'
+    if: github.event_name == 'pull_request' && github.base_ref == 'staging'
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.head_ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Setup Git
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-      
-      - name: Update Environment Configuration
-        run: |
-          echo "Updating environment configuration for staging..."
-          
-          # Get repository name as microservice name
-          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-          
-          # Create staging environment directory if it doesn't exist
-          mkdir -p "environments/staging/${REPO_NAME}"
-          
-          # Copy files from development if they exist
-          if [ -d "environments/development/${REPO_NAME}" ]; then
-            cp -r environments/development/${REPO_NAME}/* "environments/staging/${REPO_NAME}/"
-          fi
-          
-          # Update environment variables for staging
-          find environments/staging -type f -name ".env" -exec sed -i'' \
-            -e "s/APP_NAME=.*$/APP_NAME=${REPO_NAME}_staging/" \
-            -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/${REPO_NAME}_staging:latest/" \
-            -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=staging.emerginary.com/" \
-            -e "s/APP_PORT=.*$/APP_PORT=6002/" \
-            -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=6002/" \
-            -e "s/ENVIRONMENT=.*$/ENVIRONMENT=staging/" {} +
-          
-          # Clean up development-specific configurations
-          if [ -d "environments/development" ]; then
-            git rm -rf environments/development || echo "No development environment to remove"
-          fi
-          
-          # Commit the changes
-          git add environments/
-          git commit -m "Update environment configuration for staging" || echo "No changes to commit"
-          git push origin ${{ github.head_ref }}
 
-  handle-master-pr:
-    name: Handle Master PR Merge
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    if: |
-      github.event_name == 'pull_request' && 
-      github.base_ref == 'master' &&
-      (github.event.action == 'opened' || github.event.action == 'synchronize')
-    
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.head_ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Setup Git
+      - name: Handle Port Assignment
         run: |
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
-      
-      - name: Update Environment Configuration
-        run: |
-          echo "Updating environment configuration for production..."
+          chmod +x scripts/port_manager.py
           
-          # Get repository name as microservice name
-          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-          
-          # Update environment variables for production
-          if [ -d "environments/production" ]; then
-            find environments/production -type f -name ".env" -exec sed -i'' \
-              -e "s/APP_NAME=.*$/APP_NAME=${REPO_NAME}_master/" \
-              -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/${REPO_NAME}_master:latest/" \
-              -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=master.emerginary.com/" \
-              -e "s/APP_PORT=.*$/APP_PORT=7001/" \
-              -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=7001/" \
-              -e "s/ENVIRONMENT=.*$/ENVIRONMENT=production/" {} +
-            
-            # Commit the changes
-            git add environments/production
-            git commit -m "Update environment configuration for production" || echo "No changes to commit"
-            git push origin ${{ github.head_ref }}
-          fi
-          
-          # Clean up staging-specific configurations if they exist
-          if [ -d "environments/staging" ]; then
-            git rm -rf environments/staging || echo "No staging environment to remove"
-            git commit -m "Remove staging environment configurations" || echo "No changes to commit"
-            git push origin ${{ github.head_ref }}
+          if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
+            # When PR is merged to staging, assign a new staging port but don't release development port
+            echo "Assigning staging port for merged PR"
+            ./scripts/port_manager.py assign "${{ github.head_ref }}" "staging" >> $GITHUB_ENV
+          else
+            # For open PRs, just verify staging port assignment
+            echo "Verifying staging port assignment"
+            ./scripts/port_manager.py verify "${{ github.head_ref }}" "staging" >> $GITHUB_ENV
           fi
 
-  cleanup-feature-from-staging:
-    name: Clean Up Feature from Staging
+      - name: Copy to Staging Environment
+        if: github.event.pull_request.merged == true
+        run: |
+          # Create staging directory if it doesn't exist
+          mkdir -p "environments/staging/${{ github.event.repository.name }}"
+          
+          # Copy feature branch files to staging while preserving feature environment
+          cp -r "environments/development/${{ github.event.repository.name }}/${{ github.head_ref }}/"* "environments/staging/${{ github.event.repository.name }}/"
+          
+          # Update staging .env with new port
+          sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ github.event.repository.name }}/.env"
+          sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ github.event.repository.name }}/.env"
+          
+          # Commit and push changes
+          git add environments/staging
+          git commit -m "Update staging environment for ${{ github.head_ref }}"
+          git push origin staging
+
+  cleanup-feature:
+    name: Cleanup Feature Environment
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     if: github.event_name == 'delete' && startsWith(github.event.ref, 'feature-')
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: staging
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
+        
       - name: Setup Git
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-      
-      - name: Clean Up Feature Configurations
+          
+      - name: Cleanup Feature Environment
         run: |
-          # Get repository name and feature branch
-          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-          FEATURE_BRANCH="${{ github.event.ref }}"
+          chmod +x scripts/port_manager.py
           
-          echo "Cleaning up feature $FEATURE_BRANCH configurations from staging..."
+          # Release development port
+          ./scripts/port_manager.py release "${{ github.event.ref }}" "development"
           
-          # Check if there are any open PRs to staging
-          OPEN_PRS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls?base=staging&state=open" | jq length)
+          # Remove feature environment directory
+          rm -rf "environments/development/${{ github.event.repository.name }}/${{ github.event.ref }}"
           
-          if [ "$OPEN_PRS" -eq "0" ]; then
-            echo "No open PRs to staging, safe to clean up"
-            
-            # Store current staging environment configurations (except the feature-specific ones)
-            if [ -d "environments/staging/${REPO_NAME}" ]; then
-              echo "Backing up staging environment configurations..."
-              mkdir -p /tmp/staging-backup
-              
-              # Copy all files except those related to the deleted feature
-              find "environments/staging/${REPO_NAME}" -type f ! -path "*/${FEATURE_BRANCH}/*" \
-                -exec cp --parents {} /tmp/staging-backup/ \;
-            fi
-            
-            # Reset staging to match master
-            git fetch origin master:master
-            git reset --hard origin/master
-            
-            # Restore non-feature staging configurations
-            if [ -d "/tmp/staging-backup" ]; then
-              echo "Restoring staging environment configurations..."
-              cp -r /tmp/staging-backup/* environments/
-              
-              # Update environment-specific variables
-              find environments/staging -type f -name ".env" -exec sed -i'' \
-                -e "s/APP_NAME=.*$/APP_NAME=${REPO_NAME}_staging/" \
-                -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/${REPO_NAME}_staging:latest/" \
-                -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=staging.emerginary.com/" \
-                -e "s/APP_PORT=.*$/APP_PORT=6002/" \
-                -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=6002/" \
-                -e "s/ENVIRONMENT=.*$/ENVIRONMENT=staging/" {} +
-              
-              # Clean up backup
-              rm -rf /tmp/staging-backup
-            fi
-            
-            # Commit and push changes
-            git add environments/staging
-            git commit -m "Clean up configurations for deleted feature branch ${FEATURE_BRANCH}" || echo "No changes to commit"
-            git push origin staging
-          else
-            echo "Found open PRs to staging, skipping cleanup to avoid conflicts"
-            echo "Number of open PRs: $OPEN_PRS"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Commit and push changes
+          git add .
+          git commit -m "Cleanup environment for deleted feature branch ${{ github.event.ref }}"
+          git push origin master

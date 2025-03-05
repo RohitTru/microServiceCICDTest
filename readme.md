@@ -76,8 +76,10 @@ git push origin --delete feature-{name}
 
 1. Development to Staging:
    - Create PR from feature branch to staging
-   - Port will be migrated from 5xxx to 6xxx range
-   - Feature branch port will be released
+   - Feature branch environment remains active for continued development
+   - A new staging environment is created with a port in 6xxx range
+   - Original feature branch port (5xxx) remains available for development
+   - Feature environment is only cleaned up when the feature branch is explicitly deleted
 
 2. Staging to Production:
    - Create PR from staging to master
