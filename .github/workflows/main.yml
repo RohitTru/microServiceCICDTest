@@ -34,6 +34,10 @@ jobs:
 
       - name: Extract Branch and Environment Info
         run: |
+          # Get repository name as microservice name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
+          
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
             echo "TARGET_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
@@ -96,19 +100,19 @@ jobs:
             if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
               # Handle port migration for merged PRs
               echo "Migrating port for merged PR from $SOURCE_ENV to $TARGET_ENV"
-              ./scripts/port_manager.py migrate "$BRANCH_NAME" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
+              ./scripts/port_manager.py migrate "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
               
               # Release the old port from source environment
-              ./scripts/port_manager.py release "$BRANCH_NAME" "$SOURCE_ENV"
+              ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV"
             else
               # For open PRs, just assign a port in the target environment
               echo "Assigning port for PR in $TARGET_ENV"
-              ./scripts/port_manager.py assign "$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+              ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
             fi
           else
             # Normal port assignment for push events
             echo "Assigning port for $BRANCH_NAME in $TARGET_ENV"
-            ./scripts/port_manager.py assign "$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+            ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
           fi
           
           echo "Assigned port: ${{ env.APP_PORT }}"
@@ -120,7 +124,7 @@ jobs:
           git checkout master
           git pull origin master
           git add ports.json
-          git commit -m "Update port assignments for $BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
+          git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
           git push origin master || echo "Could not push to master"
           
           # Return to original branch and sync ports.json
@@ -136,21 +140,33 @@ jobs:
 
       - name: Create App Folder and .env
         run: |
-          echo "Creating app folder for ${{ env.BRANCH_NAME }}"
-          mkdir -p "${{ env.BRANCH_NAME }}"
+          # Create environment directory structure
+          echo "Creating environment directory structure..."
+          mkdir -p "environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
           
-          # Copy all template files first
+          # For feature branches in development, create feature-specific directory
+          if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
+            APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
+          else
+            APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
+          fi
+          
+          echo "Creating app folder at: $APP_DIR"
+          mkdir -p "$APP_DIR"
+          
+          # Copy all template files
           echo "Copying template files..."
-          cp -r app-template/* "${{ env.BRANCH_NAME }}/"
+          cp -r app-template/* "$APP_DIR/"
           
           # Create test-reports directory
-          mkdir -p "${{ env.BRANCH_NAME }}/tests/test-reports"
+          mkdir -p "$APP_DIR/tests/test-reports"
           
           echo "Using assigned port: ${{ env.APP_PORT }}"
           
-          echo "Generating .env file for ${{ env.BRANCH_NAME }}"
-          cat <<EOF > ./${{ env.BRANCH_NAME }}/.env
-          APP_NAME=${{ env.BRANCH_NAME }}
+          # Generate environment-specific .env file
+          echo "Generating .env file for $APP_DIR"
+          cat <<EOF > "$APP_DIR/.env"
+          APP_NAME=${{ env.MICROSERVICE_NAME }}_${{ env.BRANCH_NAME }}
           APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
           APP_PORT=${{ env.APP_PORT }}
           VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
@@ -160,26 +176,50 @@ jobs:
           APP_VERSION=${{ env.VERSION }}
           APP_COMMIT=${{ env.COMMIT_HASH }}
           BUILD_TIMESTAMP=${{ env.TIMESTAMP }}
+          ENVIRONMENT=${{ env.TARGET_ENV }}
+          EOF
+          
+          # Create environment README
+          cat <<EOF > "$APP_DIR/README.md"
+          # ${{ env.MICROSERVICE_NAME }} - ${{ env.TARGET_ENV }} Environment
+          
+          This directory contains the ${{ env.MICROSERVICE_NAME }} microservice configuration for the ${{ env.TARGET_ENV }} environment.
+          
+          ## Environment Details
+          - Environment: ${{ env.TARGET_ENV }}
+          - Port: ${{ env.APP_PORT }}
+          - Branch: ${{ env.BRANCH_NAME }}
+          - Version: ${{ env.VERSION }}
+          
+          ## Running the Service
+          To run this service:
+          \`\`\`bash
+          docker compose --env-file environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/.env up -d
+          \`\`\`
+          
+          ## Port Ranges
+          - Development: 5000-5999
+          - Staging: 6000-6999
+          - Production: 7000-7999
           EOF
           
           # List contents to verify
           echo "Verifying directory structure:"
-          ls -la "${{ env.BRANCH_NAME }}"
+          ls -la "$APP_DIR"
           echo "Verifying tests directory:"
-          ls -la "${{ env.BRANCH_NAME }}/tests"
+          ls -la "$APP_DIR/tests"
 
       - name: Install Test Dependencies
         run: |
-          cd ${{ env.BRANCH_NAME }}
+          cd "$APP_DIR"
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
       - name: Run Mandatory Tests
         continue-on-error: true
         run: |
-          cd ${{ env.BRANCH_NAME }}
-          echo "Running mandatory tests from feature branch..."
-          # Find and run mandatory tests from the feature branch
+          cd "$APP_DIR"
+          echo "Running mandatory tests..."
           if [ -f "tests/test_mandatory.py" ]; then
             echo "Found mandatory tests at tests/test_mandatory.py"
             PYTHONPATH=. python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml:tests/test-reports/coverage-mandatory.xml -v
@@ -190,9 +230,8 @@ jobs:
       - name: Run Recommended Tests
         continue-on-error: true
         run: |
-          cd ${{ env.BRANCH_NAME }}
-          echo "Running recommended tests from feature branch..."
-          # Find and run recommended tests from the feature branch
+          cd "$APP_DIR"
+          echo "Running recommended tests..."
           if [ -f "tests/test_recommended.py" ]; then
             echo "Found recommended tests at tests/test_recommended.py"
             PYTHONPATH=. python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:tests/test-reports/coverage-recommended.xml -v
@@ -203,9 +242,8 @@ jobs:
       - name: Run Optional Tests
         continue-on-error: true
         run: |
-          cd ${{ env.BRANCH_NAME }}
-          echo "Running optional tests from feature branch..."
-          # Find and run optional tests from the feature branch
+          cd "$APP_DIR"
+          echo "Running optional tests..."
           if [ -f "tests/test_optional.py" ]; then
             echo "Found optional tests at tests/test_optional.py"
             PYTHONPATH=. python -m pytest tests/test_optional.py --cov=. --cov-report=xml:tests/test-reports/coverage-optional.xml -v
@@ -216,16 +254,17 @@ jobs:
       - name: Generate Test Report
         if: always()
         run: |
-          cd ${{ env.BRANCH_NAME }}
+          cd "$APP_DIR"
           mkdir -p tests/test-reports
           
           echo "# Test Results Summary" > tests/test-reports/test-report.md
           echo "Generated at: $(date)" >> tests/test-reports/test-report.md
-          echo "\n## Overview" >> tests/test-reports/test-report.md
-          echo "\nThis is a new feature branch. No tests are required at this stage." >> tests/test-reports/test-report.md
-          echo "The tests directory contains templates for developers to create their own tests." >> tests/test-reports/test-report.md
+          echo "\n## Environment Information" >> tests/test-reports/test-report.md
+          echo "- Environment: ${{ env.TARGET_ENV }}" >> tests/test-reports/test-report.md
+          echo "- Microservice: ${{ env.MICROSERVICE_NAME }}" >> tests/test-reports/test-report.md
+          echo "- Branch: ${{ env.BRANCH_NAME }}" >> tests/test-reports/test-report.md
+          echo "- Port: ${{ env.APP_PORT }}" >> tests/test-reports/test-report.md
           
-          # Add test status summary
           echo "\n## Test Status Summary" >> tests/test-reports/test-report.md
           echo "| Test Type | Status |" >> tests/test-reports/test-report.md
           echo "|-----------|--------|" >> tests/test-reports/test-report.md
@@ -237,11 +276,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports
+          name: test-reports-${{ env.TARGET_ENV }}-${{ env.MICROSERVICE_NAME }}
           path: |
-            ${{ env.BRANCH_NAME }}/tests/test-reports/
-            ${{ env.BRANCH_NAME }}/tests/test-reports/.coverage
-            ${{ env.BRANCH_NAME }}/tests/test-reports/coverage*.xml
+            ${{ env.APP_DIR }}/tests/test-reports/
+            ${{ env.APP_DIR }}/tests/test-reports/.coverage
+            ${{ env.APP_DIR }}/tests/test-reports/coverage*.xml
 
       - name: Comment PR with Test Results
         if: github.event_name == 'pull_request' && always()
@@ -249,7 +288,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const testReport = fs.readFileSync('${{ env.BRANCH_NAME }}/tests/test-reports/test-report.md', 'utf8');
+            const testReport = fs.readFileSync('${{ env.APP_DIR }}/tests/test-reports/test-report.md', 'utf8');
             
             const comment = `## 🧪 Test Results
             
@@ -267,17 +306,17 @@ jobs:
 
       - name: Commit Test Reports
         run: |
-          cd ${{ env.BRANCH_NAME }}
+          cd "$APP_DIR"
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
           git add tests/test-reports
-          git commit -m "Add test reports for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git commit -m "Add test reports for ${{ env.MICROSERVICE_NAME }} in ${{ env.TARGET_ENV }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
       - name: Commit and Push App Folder
         run: |
-          git add "${{ env.BRANCH_NAME }}" ports.json
-          git commit -m "Add app folder for ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git add "environments" ports.json
+          git commit -m "Update ${{ env.MICROSERVICE_NAME }} in ${{ env.TARGET_ENV }}" || echo "No changes to commit"
           git push origin HEAD:${{ env.BRANCH_NAME }}
 
       - name: Log in to Docker Hub
@@ -294,7 +333,7 @@ jobs:
                       -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.TIMESTAMP }} \
                       --build-arg BUILD_VERSION=${{ env.VERSION }} \
                       --build-arg BUILD_TIMESTAMP=${{ env.TIMESTAMP }} \
-                      ./${{ env.BRANCH_NAME }}
+                      "$APP_DIR"
           
           # Push all tags
           docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
@@ -304,7 +343,6 @@ jobs:
       - name: Clean Up Workspace After Build
         run: |
           echo "Cleaning up temporary files..."
-          rm -rf "./${{ env.BRANCH_NAME }}" || true
           rm -rf "./master" || true
 
   cleanup:
@@ -324,6 +362,10 @@ jobs:
 
       - name: Extract Branch Info
         run: |
+          # Get repository name as microservice name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
+          
           if [[ "${{ github.event_name }}" == "delete" ]]; then
             echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
           else
@@ -350,10 +392,10 @@ jobs:
           git pull origin master
           
           chmod +x scripts/port_manager.py
-          ./scripts/port_manager.py release "$BRANCH_NAME" "$SOURCE_ENV"
+          ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV"
           
           git add ports.json
-          git commit -m "Release port for $BRANCH_NAME in $SOURCE_ENV" || echo "No changes to commit"
+          git commit -m "Release port for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $SOURCE_ENV" || echo "No changes to commit"
           git push origin master
 
       - name: Log in to Docker Hub
@@ -379,11 +421,18 @@ jobs:
               "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${BRANCH_NAME}/"
           fi
 
-      - name: Remove App Folder from GitHub Repo
+      - name: Remove App Folder
         run: |
           echo "Removing app folder from repository..."
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git rm -rf "./${BRANCH_NAME}" || echo "No app folder to remove"
-          git commit -m "Cleanup: Removed app folder for $BRANCH_NAME" || echo "No changes to commit"
+          
+          # Remove the environment-specific directory
+          if [[ "$SOURCE_ENV" == "development" ]]; then
+            git rm -rf "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" || echo "No app folder to remove"
+          else
+            git rm -rf "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}" || echo "No app folder to remove"
+          fi
+          
+          git commit -m "Cleanup: Removed ${{ env.MICROSERVICE_NAME }} from $SOURCE_ENV" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"

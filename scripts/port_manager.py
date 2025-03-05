@@ -30,59 +30,63 @@ class PortManager:
                 }, f, indent=2)
 
     def get_environment_for_branch(self, branch_name):
-        if branch_name == "master":
+        if branch_name.endswith("/master"):
             return "production"
-        elif branch_name == "staging":
+        elif branch_name.endswith("/staging"):
             return "staging"
         else:
             return "development"
 
     def get_next_available_port(self, branch_name, target_env=None):
-        if target_env is None:
-            target_env = self.get_environment_for_branch(branch_name)
-
         with open(self.ports_file, 'r+') as f:
+            # Lock the file for atomic read/write
             fcntl.flock(f, fcntl.LOCK_EX)
             try:
                 data = json.load(f)
-                env_data = data["environments"][target_env]
                 
-                # Check if branch already has a port in this environment
-                if branch_name in env_data["assignments"]:
-                    return env_data["assignments"][branch_name]
-
-                # Find next available port in the environment's range
-                used_ports = set(env_data["assignments"].values())
+                # Determine environment
+                env = target_env or self.get_environment_for_branch(branch_name)
+                env_data = data["environments"][env]
+                
+                # Get port range for environment
                 start_port = env_data["port_range"]["start"]
                 end_port = env_data["port_range"]["end"]
-
+                
+                # Get used ports
+                used_ports = set(env_data["assignments"].values())
+                
+                # Find next available port
                 for port in range(start_port, end_port + 1):
                     if port not in used_ports:
-                        # Assign port to branch in this environment
+                        # Assign port
                         env_data["assignments"][branch_name] = port
                         
-                        # Reset file position and write updated data
+                        # Write back to file
                         f.seek(0)
                         json.dump(data, f, indent=2)
                         f.truncate()
                         
                         return port
-                        
-                raise Exception(f"No available ports in {target_env} environment")
+                
+                raise Exception(f"No available ports in range {start_port}-{end_port}")
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
 
     def release_port(self, branch_name, environment=None):
-        if environment is None:
-            environment = self.get_environment_for_branch(branch_name)
-
         with open(self.ports_file, 'r+') as f:
+            # Lock the file for atomic read/write
             fcntl.flock(f, fcntl.LOCK_EX)
             try:
                 data = json.load(f)
-                env_data = data["environments"][environment]
-                if branch_name in env_data["assignments"]:
-                    del env_data["assignments"][branch_name]
+                
+                # Determine environment
+                env = environment or self.get_environment_for_branch(branch_name)
+                
+                # Remove port assignment if it exists
+                if branch_name in data["environments"][env]["assignments"]:
+                    del data["environments"][env]["assignments"][branch_name]
+                    
+                    # Write back to file
                     f.seek(0)
                     json.dump(data, f, indent=2)
                     f.truncate()
@@ -90,37 +94,45 @@ class PortManager:
                 fcntl.flock(f, fcntl.LOCK_UN)
 
     def migrate_port(self, branch_name, from_env, to_env):
-        """Migrate a branch's port assignment from one environment to another"""
+        """
+        Migrate a branch's port assignment from one environment to another.
+        
+        Args:
+            branch_name (str): Name of the branch to migrate
+            from_env (str): Source environment (e.g., "development")
+            to_env (str): Target environment (e.g., "staging")
+            
+        Returns:
+            int: The new port number assigned in the target environment
+        """
         with open(self.ports_file, 'r+') as f:
+            # Lock the file for atomic read/write
             fcntl.flock(f, fcntl.LOCK_EX)
             try:
                 data = json.load(f)
                 
-                # Release port from source environment
-                if branch_name in data["environments"][from_env]["assignments"]:
-                    del data["environments"][from_env]["assignments"][branch_name]
+                # Get target environment port range
+                target_env_data = data["environments"][to_env]
+                start_port = target_env_data["port_range"]["start"]
+                end_port = target_env_data["port_range"]["end"]
                 
-                # Assign new port in target environment
-                new_port = None
-                env_data = data["environments"][to_env]
-                used_ports = set(env_data["assignments"].values())
-                start_port = env_data["port_range"]["start"]
-                end_port = env_data["port_range"]["end"]
-
+                # Get used ports in target environment
+                used_ports = set(target_env_data["assignments"].values())
+                
+                # Find next available port in target environment
                 for port in range(start_port, end_port + 1):
                     if port not in used_ports:
-                        env_data["assignments"][branch_name] = port
-                        new_port = port
-                        break
-
-                if new_port is None:
-                    raise Exception(f"No available ports in {to_env} environment")
-
-                f.seek(0)
-                json.dump(data, f, indent=2)
-                f.truncate()
-                return new_port
-
+                        # Assign new port in target environment
+                        target_env_data["assignments"][branch_name] = port
+                        
+                        # Write back to file
+                        f.seek(0)
+                        json.dump(data, f, indent=2)
+                        f.truncate()
+                        
+                        return port
+                
+                raise Exception(f"No available ports in target environment range {start_port}-{end_port}")
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
 
