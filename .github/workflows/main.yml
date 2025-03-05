@@ -235,8 +235,9 @@ jobs:
             cp -r app-template/* "$APP_DIR/"
           fi
           
-          # Create test-reports directory
+          # Create test-reports directory and set as environment variable
           mkdir -p "$APP_DIR/tests/test-reports"
+          echo "TEST_REPORTS_DIR=$APP_DIR/tests/test-reports" >> $GITHUB_ENV
           
           # Generate environment-specific .env file
           echo "Generating .env file for $APP_DIR"
@@ -337,23 +338,26 @@ jobs:
       - name: Generate Test Report
         if: always()
         run: |
-          cd "$APP_DIR"
-          mkdir -p tests/test-reports
-          
-          echo "# Test Results Summary" > tests/test-reports/test-report.md
-          echo "Generated at: $(date)" >> tests/test-reports/test-report.md
-          echo "\n## Environment Information" >> tests/test-reports/test-report.md
-          echo "- Environment: ${{ env.TARGET_ENV }}" >> tests/test-reports/test-report.md
-          echo "- Microservice: ${{ env.MICROSERVICE_NAME }}" >> tests/test-reports/test-report.md
-          echo "- Branch: ${{ env.BRANCH_NAME }}" >> tests/test-reports/test-report.md
-          echo "- Port: ${{ env.APP_PORT }}" >> tests/test-reports/test-report.md
-          
-          echo "\n## Test Status Summary" >> tests/test-reports/test-report.md
-          echo "| Test Type | Status |" >> tests/test-reports/test-report.md
-          echo "|-----------|--------|" >> tests/test-reports/test-report.md
-          echo "| Mandatory | ✅ Not Required (New Branch) |" >> tests/test-reports/test-report.md
-          echo "| Recommended | ✅ Not Required (New Branch) |" >> tests/test-reports/test-report.md
-          echo "| Optional | ✅ Not Required (New Branch) |" >> tests/test-reports/test-report.md
+          # Use the environment variable for test reports directory
+          if [ -d "${{ env.TEST_REPORTS_DIR }}" ]; then
+            echo "Generating test report in ${{ env.TEST_REPORTS_DIR }}"
+            python -c "
+import json
+import os
+import glob
+
+report_dir = os.environ['TEST_REPORTS_DIR']
+report_file = os.path.join(report_dir, 'test-report.md')
+
+with open(report_file, 'w') as f:
+    f.write('# Test Results\n\n')
+    f.write('## Summary\n\n')
+    # Add more report generation logic here
+            "
+          else
+            echo "Test reports directory not found: ${{ env.TEST_REPORTS_DIR }}"
+            exit 1
+          fi
 
       - name: Upload Test Reports
         if: always()
