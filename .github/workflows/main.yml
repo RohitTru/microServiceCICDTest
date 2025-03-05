@@ -628,36 +628,41 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
 
-      - name: Handle Port Assignment
+      - name: Extract Branch Info
+        run: |
+          echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+          
+          # Get repository name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
+
+      - name: Assign Staging Port
+        if: github.event.pull_request.merged == true
         run: |
           chmod +x scripts/port_manager.py
           
-          if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
-            # When PR is merged to staging, assign a new staging port but don't release development port
-            echo "Assigning staging port for merged PR"
-            ./scripts/port_manager.py assign "${{ github.head_ref }}" "staging" >> $GITHUB_ENV
-          else
-            # For open PRs, just verify staging port assignment
-            echo "Verifying staging port assignment"
-            ./scripts/port_manager.py verify "${{ github.head_ref }}" "staging" >> $GITHUB_ENV
-          fi
+          # Assign a new port for staging
+          ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
+          
+          echo "New staging port assigned: ${{ env.APP_PORT }}"
 
       - name: Copy to Staging Environment
         if: github.event.pull_request.merged == true
         run: |
-          # Create staging directory if it doesn't exist
+          # Create staging directory
           mkdir -p "environments/staging/${{ env.BRANCH_NAME }}"
           
-          # Copy feature branch files to staging (non-destructive)
+          # Copy feature branch files to staging
           cp -r "environments/development/${{ env.BRANCH_NAME }}"/* "environments/staging/${{ env.BRANCH_NAME }}/"
           
-          # Update staging .env with new port and environment
-          sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          # Update environment and port in .env
           sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          sed -i "s/VIRTUAL_PORT=.*/VIRTUAL_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           
           # Commit and push changes
-          git add environments/staging
-          git commit -m "Copy ${{ env.BRANCH_NAME }} to staging environment (non-destructive)"
+          git add environments/staging ports.json
+          git commit -m "Copy ${{ env.BRANCH_NAME }} to staging environment with new port ${{ env.APP_PORT }}"
           git push origin staging
 
   cleanup-feature:
