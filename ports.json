@@ -5,7 +5,9 @@
         "start": 5000,
         "end": 5999
       },
-      "assignments": {}
+      "assignments": {
+        "microServiceCICDTest/feature-helpmore": 5000
+      }
     },
     "staging": {
       "port_range": {
