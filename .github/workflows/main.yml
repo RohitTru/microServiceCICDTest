@@ -603,7 +603,7 @@ jobs:
           # Copy feature branch files to staging
           cp -r "environments/development/${{ env.BRANCH_NAME }}" "environments/staging/"
           
-          # Update environment and port in .env
+          # Update environment and port in staging .env file only
           sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           sed -i "s/VIRTUAL_PORT=.*/VIRTUAL_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
@@ -626,9 +626,22 @@ jobs:
             git push origin master
           fi
           
-          # Sync back to feature branch
+          # Sync back to feature branch and restore its original port
           git checkout "${{ env.BRANCH_NAME }}"
           git pull origin "${{ env.BRANCH_NAME }}"
+          
+          # Get the original development port from ports.json
+          DEV_PORT=$(jq -r --arg key "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" --arg env "development" \
+            '.[$key][$env] // empty' ports.json)
+          
+          # Update the development .env file with the original port
+          if [ ! -z "$DEV_PORT" ]; then
+            sed -i "s/APP_PORT=.*/APP_PORT=$DEV_PORT/" "environments/development/${{ env.BRANCH_NAME }}/.env"
+            sed -i "s/VIRTUAL_PORT=.*/VIRTUAL_PORT=$DEV_PORT/" "environments/development/${{ env.BRANCH_NAME }}/.env"
+            sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=development/" "environments/development/${{ env.BRANCH_NAME }}/.env"
+          fi
+          
+          # Sync ports.json from staging
           cp ports.json ports.json.new
           git checkout staging -- ports.json
           if ! cmp -s ports.json ports.json.new; then
