@@ -209,16 +209,29 @@ jobs:
 
       - name: Create or Preserve App Environment
         run: |
-          # For feature branches in development, create feature-specific directory
-          if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
-            APP_DIR="environments/${{ env.TARGET_ENV }}/feature-branches/${{ env.BRANCH_NAME }}"
+          # Only create/modify environments based on specific conditions
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # For feature branch pushes, only create in development
+            if [[ "${{ env.BRANCH_NAME }}" =~ ^feature- ]]; then
+              APP_DIR="environments/development/feature-branches/${{ env.BRANCH_NAME }}"
+              mkdir -p "$APP_DIR"
+              cp -r app-template/* "$APP_DIR/"
             
-            # Create new environment from template
-            mkdir -p "$APP_DIR"
-            cp -r app-template/* "$APP_DIR/"
+            # For staging branch pushes
+            elif [[ "${{ env.BRANCH_NAME }}" == "staging" ]]; then
+              APP_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
+              mkdir -p "$APP_DIR"
+              cp -r app-template/* "$APP_DIR/"
             
-          elif [[ "${{ env.TARGET_ENV }}" == "staging" && "${{ github.event_name }}" == "pull_request" ]]; then
-            # For staging, preserve the feature branch environment
+            # For master branch pushes
+            elif [[ "${{ env.BRANCH_NAME }}" == "master" ]]; then
+              APP_DIR="environments/production/${{ env.MICROSERVICE_NAME }}"
+              mkdir -p "$APP_DIR"
+              cp -r app-template/* "$APP_DIR/"
+            fi
+            
+          # For pull requests to staging
+          elif [[ "${{ github.event_name }}" == "pull_request" && "${{ env.TARGET_ENV }}" == "staging" ]]; then
             SOURCE_DIR="environments/development/feature-branches/${{ env.BRANCH_NAME }}"
             TARGET_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
             
@@ -229,67 +242,71 @@ jobs:
             ./scripts/environment_manager.py link --branch "${{ env.BRANCH_NAME }}" --target "$TARGET_DIR"
             
             APP_DIR="$TARGET_DIR"
-          else
-            # For staging and production, use microservice-specific directories
-            APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
             
-            # Create new environment from template
+          # For pull requests to master
+          elif [[ "${{ github.event_name }}" == "pull_request" && "${{ env.TARGET_ENV }}" == "production" ]]; then
+            APP_DIR="environments/production/${{ env.MICROSERVICE_NAME }}"
             mkdir -p "$APP_DIR"
             cp -r app-template/* "$APP_DIR/"
           fi
           
-          # Create test-reports directory and set as environment variable
-          mkdir -p "$APP_DIR/tests/test-reports"
-          echo "TEST_REPORTS_DIR=$APP_DIR/tests/test-reports" >> $GITHUB_ENV
-          
-          # Generate environment-specific .env file
-          echo "Generating .env file for $APP_DIR"
-          cat <<EOF > "$APP_DIR/.env"
-          APP_NAME=${{ env.MICROSERVICE_NAME }}_${{ env.BRANCH_NAME }}
-          APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
-          APP_PORT=${{ env.APP_PORT }}
-          VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
-          VIRTUAL_PORT=${{ env.APP_PORT }}
-          REDIS_HOST=redis
-          ENABLE_SSL=false
-          APP_VERSION=${{ env.VERSION }}
-          APP_COMMIT=${{ env.COMMIT_HASH }}
-          BUILD_TIMESTAMP=${{ env.TIMESTAMP }}
-          ENVIRONMENT=${{ env.TARGET_ENV }}
-          EOF
-          
-          # Create environment README
-          cat <<EOF > "$APP_DIR/README.md"
-          # ${{ env.MICROSERVICE_NAME }} - ${{ env.TARGET_ENV }} Environment
-          
-          This directory contains the ${{ env.MICROSERVICE_NAME }} microservice configuration for the ${{ env.TARGET_ENV }} environment.
-          
-          ## Environment Details
-          - Environment: ${{ env.TARGET_ENV }}
-          - Port: ${{ env.APP_PORT }}
-          - Branch: ${{ env.BRANCH_NAME }}
-          - Version: ${{ env.VERSION }}
-          
-          ## Running the Service
-          To run this service:
-          \`\`\`bash
-          docker compose --env-file environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/.env up -d
-          \`\`\`
-          
-          ## Port Ranges
-          - Development: 5000-5999
-          - Staging: 6000-6999
-          - Production: 7000-7999
-          EOF
-          
-          # List contents to verify
-          echo "Verifying directory structure:"
-          ls -la "$APP_DIR"
-          echo "Verifying tests directory:"
-          ls -la "$APP_DIR/tests"
-          
-          # Export APP_DIR for subsequent steps
-          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
+          if [[ -n "$APP_DIR" ]]; then
+            # Create test-reports directory and set as environment variable
+            mkdir -p "$APP_DIR/tests/test-reports"
+            echo "TEST_REPORTS_DIR=$APP_DIR/tests/test-reports" >> $GITHUB_ENV
+            
+            # Generate environment-specific .env file
+            echo "Generating .env file for $APP_DIR"
+            cat <<EOF > "$APP_DIR/.env"
+            APP_NAME=${{ env.MICROSERVICE_NAME }}_${{ env.BRANCH_NAME }}
+            APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
+            APP_PORT=${{ env.APP_PORT }}
+            VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
+            VIRTUAL_PORT=${{ env.APP_PORT }}
+            REDIS_HOST=redis
+            ENABLE_SSL=false
+            APP_VERSION=${{ env.VERSION }}
+            APP_COMMIT=${{ env.COMMIT_HASH }}
+            BUILD_TIMESTAMP=${{ env.TIMESTAMP }}
+            ENVIRONMENT=${{ env.TARGET_ENV }}
+            EOF
+            
+            # Create environment README
+            cat <<EOF > "$APP_DIR/README.md"
+            # ${{ env.MICROSERVICE_NAME }} - ${{ env.TARGET_ENV }} Environment
+            
+            This directory contains the ${{ env.MICROSERVICE_NAME }} microservice configuration for the ${{ env.TARGET_ENV }} environment.
+            
+            ## Environment Details
+            - Environment: ${{ env.TARGET_ENV }}
+            - Port: ${{ env.APP_PORT }}
+            - Branch: ${{ env.BRANCH_NAME }}
+            - Version: ${{ env.VERSION }}
+            
+            ## Running the Service
+            To run this service:
+            \`\`\`bash
+            docker compose --env-file environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/.env up -d
+            \`\`\`
+            
+            ## Port Ranges
+            - Development: 5000-5999
+            - Staging: 6000-6999
+            - Production: 7000-7999
+            EOF
+            
+            # List contents to verify
+            echo "Verifying directory structure:"
+            ls -la "$APP_DIR"
+            echo "Verifying tests directory:"
+            ls -la "$APP_DIR/tests"
+            
+            # Export APP_DIR for subsequent steps
+            echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
+          else
+            echo "No environment directory needed for this event"
+            exit 0
+          fi
 
       - name: Install Test Dependencies
         run: |
