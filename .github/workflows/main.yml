@@ -443,5 +443,53 @@ jobs:
             git rm -rf "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}" || echo "No app folder to remove"
           fi
           
-          git commit -m "Cleanup: Removed ${{ env.MICROSERVICE_NAME }} from $SOURCE_ENV" || echo "No changes to commit"
+          # Clean up any empty directories
+          find environments -type d -empty -delete || echo "No empty directories to clean"
+          
+          # Verify no unexpected files exist
+          echo "Verifying cleanup..."
+          if [[ "$SOURCE_ENV" == "development" ]]; then
+            if [[ -d "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" ]]; then
+              echo "Error: Branch directory still exists after cleanup!"
+              exit 1
+            fi
+          else
+            if [[ -d "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}" ]]; then
+              echo "Error: Environment directory still exists after cleanup!"
+              exit 1
+            fi
+          fi
+          
+          # Ensure only .gitkeep exists in environments if it's empty
+          if [[ $(ls -A environments | grep -v .gitkeep) ]]; then
+            echo "Warning: Found unexpected files in environments directory:"
+            ls -la environments
+            # Remove any unexpected files
+            find environments -not -name .gitkeep -type f -delete
+          fi
+          
+          git add environments
+          git commit -m "Cleanup: Removed ${{ env.MICROSERVICE_NAME }} from $SOURCE_ENV and cleaned empty directories" || echo "No changes to commit"
           git push origin master || echo "Nothing to push"
+
+      - name: Verify Repository State
+        run: |
+          echo "Verifying repository state after cleanup..."
+          
+          # Check for any leftover files in environments
+          UNEXPECTED_FILES=$(find environments -type f ! -name .gitkeep)
+          if [[ -n "$UNEXPECTED_FILES" ]]; then
+            echo "Error: Found unexpected files after cleanup:"
+            echo "$UNEXPECTED_FILES"
+            exit 1
+          fi
+          
+          # Check for any empty directories that should have been cleaned
+          EMPTY_DIRS=$(find environments -type d -empty ! -name environments)
+          if [[ -n "$EMPTY_DIRS" ]]; then
+            echo "Error: Found empty directories that should have been cleaned:"
+            echo "$EMPTY_DIRS"
+            exit 1
+          fi
+          
+          echo "✅ Repository state verified - cleanup successful"
