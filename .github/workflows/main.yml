@@ -126,52 +126,61 @@ jobs:
           
           # Function to safely update ports.json
           update_ports_json() {
-            # Create a backup of ports.json
-            if [ -f "ports.json" ]; then
-              cp ports.json "ports.json.backup.$(date +%Y%m%d_%H%M%S)"
-            fi
+            # Stash any current changes
+            git stash
             
             # Try to update master
             if ! git checkout master; then
               echo "Error: Could not checkout master branch"
+              git stash pop
               return 1
             fi
             
             if ! git pull origin master; then
               echo "Error: Could not pull latest changes from master"
+              git checkout - && git stash pop
               return 1
             fi
             
+            # Create a backup of ports.json
+            if [ -f "ports.json" ]; then
+              cp ports.json "ports.json.backup.$(date +%Y%m%d_%H%M%S)"
+            fi
+            
             git add ports.json
-            git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
+            git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }} in ${{ env.TARGET_ENV }}" || echo "No changes to commit"
             
             if ! git push origin master; then
               echo "Warning: Could not push to master, will retry with updated changes"
               git pull --rebase origin master
               if ! git push origin master; then
                 echo "Error: Could not push to master even after rebase"
+                git checkout - && git stash pop
                 return 1
               fi
             fi
             
+            # Return to original branch and restore changes
+            git checkout -
+            git stash pop || true
             return 0
           }
           
           # Main port assignment logic
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
-              echo "Migrating port for merged PR from $SOURCE_ENV to $TARGET_ENV"
-              handle_port_operation ./scripts/port_manager.py migrate "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
+              echo "Migrating port for merged PR from ${{ env.SOURCE_ENV }} to ${{ env.TARGET_ENV }}"
+              handle_port_operation ./scripts/port_manager.py migrate "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.SOURCE_ENV }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
               
               echo "Releasing port from source environment"
-              handle_port_operation ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV"
+              handle_port_operation ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.SOURCE_ENV }}"
             else
-              echo "Assigning port for PR in $TARGET_ENV"
-              handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+              echo "Assigning port for PR in ${{ env.TARGET_ENV }}"
+              handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
             fi
           else
-            echo "Assigning port for $BRANCH_NAME in $TARGET_ENV"
-            handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+            echo "Assigning port for ${{ env.BRANCH_NAME }} in ${{ env.TARGET_ENV }}"
+            handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
           fi
           
           echo "Assigned port: ${{ env.APP_PORT }}"
@@ -182,21 +191,13 @@ jobs:
             # Continue anyway as this is not critical
           fi
           
-          # Return to original branch and sync ports.json
-          if ! git checkout $BRANCH_NAME; then
-            echo "Error: Could not return to original branch"
-            exit 1
-          fi
-          
           # Sync ports.json from master
-          if ! git checkout master -- ports.json; then
-            echo "Error: Could not sync ports.json from master"
-            exit 1
-          fi
+          git fetch origin master:master || true
+          git checkout master -- ports.json || true
           
           git add ports.json
           git commit -m "Sync ports.json from master" || echo "No changes to commit"
-          git push origin $BRANCH_NAME || echo "Could not push to feature branch"
+          git push origin "${{ env.BRANCH_NAME }}" || echo "Could not push to feature branch"
 
       - name: Setup Environment Manager
         run: |
@@ -359,6 +360,22 @@ jobs:
         if: always()
         run: |
           chmod +x scripts/test_report_generator.py
+          
+          # Ensure TEST_REPORTS_DIR is set
+          if [[ -z "$TEST_REPORTS_DIR" ]]; then
+            if [[ -n "$APP_DIR" ]]; then
+              TEST_REPORTS_DIR="$APP_DIR/tests/test-reports"
+              echo "TEST_REPORTS_DIR=$TEST_REPORTS_DIR" >> $GITHUB_ENV
+            else
+              echo "Error: Neither TEST_REPORTS_DIR nor APP_DIR is set"
+              exit 1
+            fi
+          fi
+          
+          # Create test reports directory if it doesn't exist
+          mkdir -p "$TEST_REPORTS_DIR"
+          
+          # Run test report generator
           ./scripts/test_report_generator.py
 
       - name: Upload Test Reports
