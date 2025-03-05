@@ -220,7 +220,7 @@ jobs:
           elif [[ "${{ env.TARGET_ENV }}" == "staging" && "${{ github.event_name }}" == "pull_request" ]]; then
             # For staging, preserve the feature branch environment
             SOURCE_DIR="environments/development/feature-branches/${{ env.BRANCH_NAME }}"
-            TARGET_DIR="environments/staging/current"
+            TARGET_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
             
             # Preserve the environment using symlink
             ./scripts/environment_manager.py preserve --source "$SOURCE_DIR" --target "$TARGET_DIR"
@@ -230,9 +230,10 @@ jobs:
             
             APP_DIR="$TARGET_DIR"
           else
-            APP_DIR="environments/${{ env.TARGET_ENV }}/current"
+            # For staging and production, use microservice-specific directories
+            APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
             
-            # Create new environment from template for other cases
+            # Create new environment from template
             mkdir -p "$APP_DIR"
             cp -r app-template/* "$APP_DIR/"
           fi
