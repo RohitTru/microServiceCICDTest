@@ -140,31 +140,47 @@ jobs:
           git commit -m "Sync ports.json from master" || echo "No changes to commit"
           git push origin $BRANCH_NAME || echo "Could not push to feature branch"
 
-      - name: Create App Folder and .env
+      - name: Setup Environment Manager
         run: |
-          # Create environment directory structure with proper permissions
-          echo "Creating environment directory structure..."
-          sudo mkdir -p "environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
-          sudo chmod -R 777 environments
+          chmod +x scripts/environment_manager.py
           
+          # Track feature branch if in development
+          if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
+            ./scripts/environment_manager.py track --branch "${{ env.BRANCH_NAME }}" --microservice "${{ env.MICROSERVICE_NAME }}"
+          fi
+
+      - name: Create or Preserve App Environment
+        run: |
           # For feature branches in development, create feature-specific directory
           if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
             APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
+            
+            # Create new environment from template
+            mkdir -p "$APP_DIR"
+            cp -r app-template/* "$APP_DIR/"
+            
+          elif [[ "${{ env.TARGET_ENV }}" == "staging" && "${{ github.event_name }}" == "pull_request" ]]; then
+            # For staging, preserve the feature branch environment
+            SOURCE_DIR="environments/development/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
+            TARGET_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
+            
+            # Preserve the environment using symlink
+            ./scripts/environment_manager.py preserve --source "$SOURCE_DIR" --target "$TARGET_DIR"
+            
+            # Link the feature branch to staging
+            ./scripts/environment_manager.py link --branch "${{ env.BRANCH_NAME }}" --target "$TARGET_DIR"
+            
+            APP_DIR="$TARGET_DIR"
           else
             APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
+            
+            # Create new environment from template for other cases
+            mkdir -p "$APP_DIR"
+            cp -r app-template/* "$APP_DIR/"
           fi
-          
-          echo "Creating app folder at: $APP_DIR"
-          mkdir -p "$APP_DIR"
-          
-          # Copy all template files
-          echo "Copying template files..."
-          cp -r app-template/* "$APP_DIR/"
           
           # Create test-reports directory
           mkdir -p "$APP_DIR/tests/test-reports"
-          
-          echo "Using assigned port: ${{ env.APP_PORT }}"
           
           # Generate environment-specific .env file
           echo "Generating .env file for $APP_DIR"
@@ -671,27 +687,44 @@ jobs:
     name: Cleanup Feature Environment
     runs-on: ubuntu-latest
     if: github.event_name == 'delete' && startsWith(github.event.ref, 'feature-')
-    
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        
-      - name: Setup Git
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Extract Branch Info
         run: |
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
-          
+          BRANCH_NAME="${{ github.event.ref }}"
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
+
+      - name: Setup Environment Manager
+        run: |
+          chmod +x scripts/environment_manager.py
+
       - name: Cleanup Feature Environment
         run: |
+          # Check if environment can be safely cleaned up
+          DEV_ENV_PATH="environments/development/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
+          
+          # Attempt to cleanup the environment
+          ./scripts/environment_manager.py cleanup --target "$DEV_ENV_PATH"
+          
+          # Release the port
           chmod +x scripts/port_manager.py
+          ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "development"
           
-          # Release development port
-          ./scripts/port_manager.py release "${{ github.event.ref }}" "development"
-          
-          # Remove feature environment directory
-          rm -rf "environments/development/${{ github.event.repository.name }}/${{ github.event.ref }}"
-          
-          # Commit and push changes
-          git add .
-          git commit -m "Cleanup environment for deleted feature branch ${{ github.event.ref }}"
-          git push origin master
+          # Commit port changes
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add ports.json
+          git commit -m "Release port for deleted feature branch ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Could not push to master"
