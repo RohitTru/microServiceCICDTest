@@ -581,21 +581,48 @@ jobs:
       - name: Copy to Staging Environment
         if: github.event.pull_request.merged == true
         run: |
-          # Create staging directory
-          mkdir -p "environments/staging/${{ env.BRANCH_NAME }}"
+          # Remove existing feature branch from staging if it exists
+          rm -rf "environments/staging/${{ env.BRANCH_NAME }}"
           
           # Copy feature branch files to staging
-          cp -r "environments/development/${{ env.BRANCH_NAME }}"/* "environments/staging/${{ env.BRANCH_NAME }}/"
+          cp -r "environments/development/${{ env.BRANCH_NAME }}" "environments/staging/"
           
           # Update environment and port in .env
           sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           sed -i "s/VIRTUAL_PORT=.*/VIRTUAL_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           
-          # Commit and push changes
+          # First commit changes to staging branch
           git add environments/staging ports.json
           git commit -m "Copy ${{ env.BRANCH_NAME }} to staging environment with new port ${{ env.APP_PORT }}"
           git push origin staging
+          
+          # Now sync ports.json to other branches
+          # Sync to master
+          git fetch origin master
+          git checkout master
+          git pull origin master
+          cp ports.json ports.json.new
+          git checkout staging -- ports.json
+          if ! cmp -s ports.json ports.json.new; then
+            git add ports.json
+            git commit -m "Sync port assignments from staging"
+            git push origin master
+          fi
+          
+          # Sync back to feature branch
+          git checkout "${{ env.BRANCH_NAME }}"
+          git pull origin "${{ env.BRANCH_NAME }}"
+          cp ports.json ports.json.new
+          git checkout staging -- ports.json
+          if ! cmp -s ports.json ports.json.new; then
+            git add ports.json
+            git commit -m "Sync port assignments from staging"
+            git push origin "${{ env.BRANCH_NAME }}"
+          fi
+          
+          # Return to staging branch
+          git checkout staging
 
   cleanup-feature:
     name: Cleanup Feature Environment
