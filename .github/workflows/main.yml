@@ -19,6 +19,7 @@ jobs:
   build-feature-app:
     name: Build & Deploy Feature App
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
 
     steps:
       - name: Checkout Code
@@ -33,28 +34,29 @@ jobs:
 
       - name: Extract Branch and Environment Info
         run: |
-          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
-          
-          # Determine environment based on branch
-          if [[ "${GITHUB_REF#refs/heads/}" == "master" ]]; then
-            echo "TARGET_ENV=production" >> $GITHUB_ENV
-          elif [[ "${GITHUB_REF#refs/heads/}" == "staging" ]]; then
-            echo "TARGET_ENV=staging" >> $GITHUB_ENV
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+            echo "TARGET_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
           else
-            echo "TARGET_ENV=development" >> $GITHUB_ENV
+            echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
           fi
           
-          # For pull requests, determine source and target environments
+          # Determine environment based on branch or PR target
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "SOURCE_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
-            echo "TARGET_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
-            
             if [[ "${{ github.base_ref }}" == "master" ]]; then
               echo "TARGET_ENV=production" >> $GITHUB_ENV
               echo "SOURCE_ENV=staging" >> $GITHUB_ENV
             elif [[ "${{ github.base_ref }}" == "staging" ]]; then
               echo "TARGET_ENV=staging" >> $GITHUB_ENV
               echo "SOURCE_ENV=development" >> $GITHUB_ENV
+            fi
+          else
+            if [[ "${GITHUB_REF#refs/heads/}" == "master" ]]; then
+              echo "TARGET_ENV=production" >> $GITHUB_ENV
+            elif [[ "${GITHUB_REF#refs/heads/}" == "staging" ]]; then
+              echo "TARGET_ENV=staging" >> $GITHUB_ENV
+            else
+              echo "TARGET_ENV=development" >> $GITHUB_ENV
             fi
           fi
 
@@ -94,16 +96,14 @@ jobs:
             if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
               # Handle port migration for merged PRs
               echo "Migrating port for merged PR from $SOURCE_ENV to $TARGET_ENV"
-              ./scripts/port_manager.py migrate "$SOURCE_BRANCH" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
+              ./scripts/port_manager.py migrate "$BRANCH_NAME" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
               
               # Release the old port from source environment
-              ./scripts/port_manager.py release "$SOURCE_BRANCH" "$SOURCE_ENV"
-              
-              # Update the .env file with new port
-              if [ -f "$SOURCE_BRANCH/.env" ]; then
-                sed -i "s/^APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "$SOURCE_BRANCH/.env"
-                sed -i "s/^VIRTUAL_PORT=.*/VIRTUAL_PORT=${{ env.APP_PORT }}/" "$SOURCE_BRANCH/.env"
-              fi
+              ./scripts/port_manager.py release "$BRANCH_NAME" "$SOURCE_ENV"
+            else
+              # For open PRs, just assign a port in the target environment
+              echo "Assigning port for PR in $TARGET_ENV"
+              ./scripts/port_manager.py assign "$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
             fi
           else
             # Normal port assignment for push events
@@ -118,7 +118,7 @@ jobs:
           git pull origin master
           git add ports.json
           git commit -m "Update port assignments for $BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
-          git push origin master
+          git push origin master || echo "Could not push to master"
           
           # Return to original branch and sync ports.json
           git checkout $BRANCH_NAME
