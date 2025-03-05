@@ -100,26 +100,19 @@ jobs:
         run: |
           chmod +x scripts/port_manager.py
           
-          # Simple port assignment logic
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
-              # When PR is merged to staging, assign a staging port
-              echo "Assigning staging port for merged PR"
-              ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
-            else
-              # For open PRs, verify port assignment
-              echo "Verifying staging port assignment"
-              ./scripts/port_manager.py verify "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
-            fi
+          # For pull requests to staging, always assign a new port
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.base_ref }}" == "staging" ]]; then
+            echo "Assigning new port for staging PR"
+            ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
           else
-            # For direct pushes, assign a port if needed
+            # For direct pushes, assign a port for the target environment
             echo "Assigning port for ${{ env.BRANCH_NAME }} in ${{ env.TARGET_ENV }}"
             ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
           fi
           
           echo "Assigned port: ${{ env.APP_PORT }}"
           
-          # Simple ports.json update
+          # Update ports.json
           git add ports.json
           git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD || echo "Could not push port changes"
