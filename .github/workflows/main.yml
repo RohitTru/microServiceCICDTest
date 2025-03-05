@@ -208,106 +208,41 @@ jobs:
             ./scripts/environment_manager.py track --branch "${{ env.BRANCH_NAME }}" --microservice "${{ env.MICROSERVICE_NAME }}"
           fi
 
-      - name: Create or Preserve App Environment
+      - name: Setup App Environment
         run: |
-          # Only create/modify environments based on specific conditions
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            # For feature branch pushes, only create in development
-            if [[ "${{ env.BRANCH_NAME }}" =~ ^feature- ]]; then
-              APP_DIR="environments/development/feature-branches/${{ env.BRANCH_NAME }}"
-              mkdir -p "$APP_DIR"
-              cp -r app-template/* "$APP_DIR/"
-            
-            # For staging branch pushes
-            elif [[ "${{ env.BRANCH_NAME }}" == "staging" ]]; then
-              APP_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
-              mkdir -p "$APP_DIR"
-              cp -r app-template/* "$APP_DIR/"
-            
-            # For master branch pushes
-            elif [[ "${{ env.BRANCH_NAME }}" == "master" ]]; then
-              APP_DIR="environments/production/${{ env.MICROSERVICE_NAME }}"
-              mkdir -p "$APP_DIR"
-              cp -r app-template/* "$APP_DIR/"
-            fi
-            
-          # For pull requests to staging
-          elif [[ "${{ github.event_name }}" == "pull_request" && "${{ env.TARGET_ENV }}" == "staging" ]]; then
-            SOURCE_DIR="environments/development/feature-branches/${{ env.BRANCH_NAME }}"
-            TARGET_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
-            
-            # Preserve the environment using symlink
-            ./scripts/environment_manager.py preserve --source "$SOURCE_DIR" --target "$TARGET_DIR"
-            
-            # Link the feature branch to staging
-            ./scripts/environment_manager.py link --branch "${{ env.BRANCH_NAME }}" --target "$TARGET_DIR"
-            
-            APP_DIR="$TARGET_DIR"
-            
-          # For pull requests to master
-          elif [[ "${{ github.event_name }}" == "pull_request" && "${{ env.TARGET_ENV }}" == "production" ]]; then
-            APP_DIR="environments/production/${{ env.MICROSERVICE_NAME }}"
-            mkdir -p "$APP_DIR"
-            cp -r app-template/* "$APP_DIR/"
-          fi
-          
-          if [[ -n "$APP_DIR" ]]; then
-            # Create test-reports directory and set as environment variable
-            mkdir -p "$APP_DIR/tests/test-reports"
-            echo "TEST_REPORTS_DIR=$APP_DIR/tests/test-reports" >> $GITHUB_ENV
-            
-            # Generate environment-specific .env file
-            echo "Generating .env file for $APP_DIR"
-            cat <<EOF > "$APP_DIR/.env"
-            APP_NAME=${{ env.MICROSERVICE_NAME }}_${{ env.BRANCH_NAME }}
-            APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
-            APP_PORT=${{ env.APP_PORT }}
-            VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com
-            VIRTUAL_PORT=${{ env.APP_PORT }}
-            REDIS_HOST=redis
-            ENABLE_SSL=false
-            APP_VERSION=${{ env.VERSION }}
-            APP_COMMIT=${{ env.COMMIT_HASH }}
-            BUILD_TIMESTAMP=${{ env.TIMESTAMP }}
-            ENVIRONMENT=${{ env.TARGET_ENV }}
-            EOF
-            
-            # Create environment README
-            cat <<EOF > "$APP_DIR/README.md"
-            # ${{ env.MICROSERVICE_NAME }} - ${{ env.TARGET_ENV }} Environment
-            
-            This directory contains the ${{ env.MICROSERVICE_NAME }} microservice configuration for the ${{ env.TARGET_ENV }} environment.
-            
-            ## Environment Details
-            - Environment: ${{ env.TARGET_ENV }}
-            - Port: ${{ env.APP_PORT }}
-            - Branch: ${{ env.BRANCH_NAME }}
-            - Version: ${{ env.VERSION }}
-            
-            ## Running the Service
-            To run this service:
-            \`\`\`bash
-            docker compose --env-file environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/.env up -d
-            \`\`\`
-            
-            ## Port Ranges
-            - Development: 5000-5999
-            - Staging: 6000-6999
-            - Production: 7000-7999
-            EOF
-            
-            # List contents to verify
-            echo "Verifying directory structure:"
-            ls -la "$APP_DIR"
-            echo "Verifying tests directory:"
-            ls -la "$APP_DIR/tests"
-            
-            # Export APP_DIR for subsequent steps
-            echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
+          # Create environment directory based on branch type
+          if [[ "${{ env.BRANCH_NAME }}" =~ ^feature- ]]; then
+            APP_DIR="environments/development/${{ env.BRANCH_NAME }}"
+          elif [[ "${{ env.BRANCH_NAME }}" == "staging" ]]; then
+            APP_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
           else
-            echo "No environment directory needed for this event"
-            exit 0
+            APP_DIR="environments/production/${{ env.MICROSERVICE_NAME }}"
           fi
+
+          # Create directory and copy template
+          mkdir -p "$APP_DIR"
+          cp -r app-template/* "$APP_DIR/"
+
+          # Create test reports directory
+          mkdir -p "$APP_DIR/tests/test-reports"
+          echo "TEST_REPORTS_DIR=$APP_DIR/tests/test-reports" >> $GITHUB_ENV
+          
+          # Generate .env file
+          {
+            echo "APP_NAME=${{ env.MICROSERVICE_NAME }}_${{ env.BRANCH_NAME }}"
+            echo "APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}"
+            echo "APP_PORT=${{ env.APP_PORT }}"
+            echo "VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com"
+            echo "VIRTUAL_PORT=${{ env.APP_PORT }}"
+            echo "REDIS_HOST=redis"
+            echo "ENABLE_SSL=false"
+            echo "APP_VERSION=${{ env.VERSION }}"
+            echo "APP_COMMIT=${{ env.COMMIT_HASH }}"
+            echo "BUILD_TIMESTAMP=${{ env.TIMESTAMP }}"
+            echo "ENVIRONMENT=${{ env.TARGET_ENV }}"
+          } > "$APP_DIR/.env"
+          
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
 
       - name: Install Test Dependencies
         run: |
