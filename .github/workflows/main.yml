@@ -202,8 +202,8 @@ jobs:
         run: |
           chmod +x scripts/environment_manager.py
           
-          # Track feature branch if in development
-          if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
+          # Track feature branch for all environments
+          if [[ "${{ github.event_name }}" == "push" && "${{ env.BRANCH_NAME }}" =~ ^feature- ]]; then
             ./scripts/environment_manager.py track --branch "${{ env.BRANCH_NAME }}" --microservice "${{ env.MICROSERVICE_NAME }}"
           fi
 
