@@ -4,9 +4,9 @@ This directory contains the microServiceCICDTest microservice configuration for 
 
 ## Environment Details
 - Environment: production
-- Port: 7001
+- Port: 7002
 - Branch: master
-- Version: 235-b473f5d
+- Version: 238-254730c
 
 ## Running the Service
 To run this service:
