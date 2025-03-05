@@ -211,7 +211,7 @@ jobs:
         run: |
           # For feature branches in development, create feature-specific directory
           if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
-            APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
+            APP_DIR="environments/${{ env.TARGET_ENV }}/feature-branches/${{ env.BRANCH_NAME }}"
             
             # Create new environment from template
             mkdir -p "$APP_DIR"
@@ -219,8 +219,8 @@ jobs:
             
           elif [[ "${{ env.TARGET_ENV }}" == "staging" && "${{ github.event_name }}" == "pull_request" ]]; then
             # For staging, preserve the feature branch environment
-            SOURCE_DIR="environments/development/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
-            TARGET_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
+            SOURCE_DIR="environments/development/feature-branches/${{ env.BRANCH_NAME }}"
+            TARGET_DIR="environments/staging/current"
             
             # Preserve the environment using symlink
             ./scripts/environment_manager.py preserve --source "$SOURCE_DIR" --target "$TARGET_DIR"
@@ -230,7 +230,7 @@ jobs:
             
             APP_DIR="$TARGET_DIR"
           else
-            APP_DIR="environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
+            APP_DIR="environments/${{ env.TARGET_ENV }}/current"
             
             # Create new environment from template for other cases
             mkdir -p "$APP_DIR"
@@ -500,9 +500,9 @@ jobs:
           
           # Remove the environment-specific directory
           if [[ "$SOURCE_ENV" == "development" ]]; then
-            git rm -rf "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" || echo "No app folder to remove"
+            git rm -rf "environments/$SOURCE_ENV/feature-branches/${{ env.BRANCH_NAME }}" || echo "No app folder to remove"
           else
-            git rm -rf "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}" || echo "No app folder to remove"
+            git rm -rf "environments/$SOURCE_ENV/current" || echo "No app folder to remove"
           fi
           
           # Clean up any empty directories
@@ -511,12 +511,12 @@ jobs:
           # Verify no unexpected files exist
           echo "Verifying cleanup..."
           if [[ "$SOURCE_ENV" == "development" ]]; then
-            if [[ -d "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" ]]; then
+            if [[ -d "environments/$SOURCE_ENV/feature-branches/${{ env.BRANCH_NAME }}" ]]; then
               echo "Error: Branch directory still exists after cleanup!"
               exit 1
             fi
           else
-            if [[ -d "environments/$SOURCE_ENV/${{ env.MICROSERVICE_NAME }}" ]]; then
+            if [[ -d "environments/$SOURCE_ENV/current" ]]; then
               echo "Error: Environment directory still exists after cleanup!"
               exit 1
             fi
