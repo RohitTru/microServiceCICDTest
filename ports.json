@@ -6,7 +6,8 @@
         "end": 5999
       },
       "assignments": {
-        "feature-test-infra": 5000
+        "feature-test-infra": 5000,
+        "microServiceCICDTest/feature-improve-staging-workflow": 5001
       }
     },
     "staging": {
