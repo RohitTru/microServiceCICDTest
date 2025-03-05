@@ -1,5 +1,7 @@
 version: '3.8'
 
+# Network Configuration
+# This network is shared across all microservices
 networks:
   app-network:
     driver: bridge
@@ -8,6 +10,7 @@ networks:
 
 services:
   # Redis Service (Shared)
+  # This service is shared across all environments
   redis:
     image: redis:6.2
     container_name: redis
@@ -18,21 +21,26 @@ services:
       - app-network
 
   # Application Service (Dynamic)
+  # This service is configured based on the environment:
+  # - Development: environments/development/microServiceCICDTest/feature-name/
+  # - Staging: environments/staging/microServiceCICDTest/
+  # - Production: environments/production/microServiceCICDTest/
   app:
     image: "${APP_IMAGE:-rohittru/microservicecicdtest_default:latest}"
     container_name: "${APP_NAME:-default-app}"
     restart: always
     build:
+      # APP_DIR is automatically set by the workflow to point to the correct environment directory
       context: ${APP_DIR:-.}
       dockerfile: Dockerfile
       args:
         - BUILD_VERSION=${APP_VERSION:-dev}
         - BUILD_TIMESTAMP=${BUILD_TIMESTAMP:-unknown}
     ports:
-      - "${APP_PORT}:${APP_PORT}"
+      - "${APP_PORT}:${APP_PORT}"  # Port is assigned by port_manager.py
     environment:
       - APP_PORT=${APP_PORT:-5000}
-      - FLASK_ENV=${ENVIRONMENT:-development}
+      - FLASK_ENV=${ENVIRONMENT:-development}  # Set based on target environment
     networks:
       - app-network
     healthcheck:
@@ -42,12 +50,13 @@ services:
       retries: 3
 
   # Nginx Proxy (Only in non-test environments)
+  # This service handles SSL termination and routing
   nginx:
     image: jwilder/nginx-proxy:latest
     container_name: nginx-proxy
     restart: always
     profiles:
-      - production
+      - production  # Only enabled in production
     ports:
       - "80:80"
       - "443:443"
@@ -55,6 +64,7 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
       - ./certs:/etc/ssl/certs:ro
       - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # Service-specific nginx configuration from the environment directory
       - "${APP_DIR:-./}/nginx/conf.d:/etc/nginx/conf.d/service-specific:ro"
     networks:
       - app-network
