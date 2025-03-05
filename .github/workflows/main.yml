@@ -113,7 +113,10 @@ jobs:
           
           echo "Assigned port: ${{ env.APP_PORT }}"
           
-          # Commit port changes to master
+          # Save any changes to stash
+          git stash push -u
+
+          # Switch to master and update ports.json
           git checkout master
           git pull origin master
           git add ports.json
@@ -123,6 +126,10 @@ jobs:
           # Return to original branch and sync ports.json
           git checkout $BRANCH_NAME
           git checkout master -- ports.json
+          
+          # Pop stashed changes if any
+          git stash pop || echo "No stash to pop"
+          
           git add ports.json
           git commit -m "Sync ports.json from master" || echo "No changes to commit"
           git push origin $BRANCH_NAME || echo "Could not push to feature branch"
@@ -130,7 +137,7 @@ jobs:
       - name: Create App Folder and .env
         run: |
           echo "Creating app folder for ${{ env.BRANCH_NAME }}"
-          mkdir -p "${{ env.BRANCH_NAME }}"
+          mkdir -p "${{ env.BRANCH_NAME }}/tests/test-reports"
           
           # First, check if we already have a tests directory in the feature branch
           if [ -d "${{ env.BRANCH_NAME }}/tests" ]; then
