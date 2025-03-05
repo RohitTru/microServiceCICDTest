@@ -338,10 +338,9 @@ jobs:
       - name: Generate Test Report
         if: always()
         run: |
-          # Use the environment variable for test reports directory
           if [ -d "${{ env.TEST_REPORTS_DIR }}" ]; then
             echo "Generating test report in ${{ env.TEST_REPORTS_DIR }}"
-            python -c '
+            cat > generate_report.py << 'EOL'
 import json
 import os
 import glob
@@ -353,13 +352,13 @@ report_file = os.path.join(report_dir, "test-report.md")
 with open(report_file, "w") as f:
     f.write("# Test Results\n\n")
     f.write("## Summary\n\n")
-    f.write(f"Generated at: {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}\n\n")
+    f.write(f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
     
     # Add environment info
     f.write("### Environment\n")
-    f.write(f"- Environment: {os.environ.get(\"TARGET_ENV\", \"unknown\")}\n")
-    f.write(f"- Branch: {os.environ.get(\"BRANCH_NAME\", \"unknown\")}\n")
-    f.write(f"- Version: {os.environ.get(\"VERSION\", \"unknown\")}\n\n")
+    f.write(f"- Environment: {os.environ.get('TARGET_ENV', 'unknown')}\n")
+    f.write(f"- Branch: {os.environ.get('BRANCH_NAME', 'unknown')}\n")
+    f.write(f"- Version: {os.environ.get('VERSION', 'unknown')}\n\n")
     
     # Check for coverage reports
     coverage_files = glob.glob(os.path.join(report_dir, "coverage*.xml"))
@@ -378,7 +377,9 @@ with open(report_file, "w") as f:
     for test_type in test_types:
         status = "✅ Completed" if os.path.exists(os.path.join(report_dir, f"coverage-{test_type}.xml")) else "⚪ Not Required"
         f.write(f"| {test_type.capitalize()} | {status} |\n")
-'
+EOL
+            python generate_report.py
+            rm generate_report.py
           else
             echo "Test reports directory not found: ${{ env.TEST_REPORTS_DIR }}"
             exit 1
