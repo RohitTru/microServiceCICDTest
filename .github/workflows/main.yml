@@ -112,10 +112,26 @@ jobs:
           
           echo "Assigned port: ${{ env.APP_PORT }}"
           
-          # Update ports.json
+          # First commit to current branch
           git add ports.json
           git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" || echo "No changes to commit"
           git push origin HEAD || echo "Could not push port changes"
+          
+          # Now sync to master branch
+          git fetch origin master
+          git checkout master
+          git pull origin master
+          
+          # Copy the ports.json from feature branch
+          git checkout HEAD@{1} -- ports.json
+          
+          # Commit and push to master
+          git add ports.json
+          git commit -m "Sync port assignments from ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Could not push to master"
+          
+          # Return to original branch
+          git checkout -
 
       - name: Setup Environment Manager
         run: |
