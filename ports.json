@@ -6,7 +6,8 @@
         "end": 5999
       },
       "assignments": {
-        "microServiceCICDTest/feature-test": 5000
+        "microServiceCICDTest/feature-test": 5000,
+        "microServiceCICDTest/feature-another1": 5001
       }
     },
     "staging": {
