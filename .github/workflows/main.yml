@@ -728,3 +728,81 @@ jobs:
             git commit -m "Remove staging environment configurations" || echo "No changes to commit"
             git push origin ${{ github.head_ref }}
           fi
+
+  cleanup-feature-from-staging:
+    name: Clean Up Feature from Staging
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'delete' && startsWith(github.event.ref, 'feature-')
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: staging
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Clean Up Feature Configurations
+        run: |
+          # Get repository name and feature branch
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          FEATURE_BRANCH="${{ github.event.ref }}"
+          
+          echo "Cleaning up feature $FEATURE_BRANCH configurations from staging..."
+          
+          # Check if there are any open PRs to staging
+          OPEN_PRS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls?base=staging&state=open" | jq length)
+          
+          if [ "$OPEN_PRS" -eq "0" ]; then
+            echo "No open PRs to staging, safe to clean up"
+            
+            # Store current staging environment configurations (except the feature-specific ones)
+            if [ -d "environments/staging/${REPO_NAME}" ]; then
+              echo "Backing up staging environment configurations..."
+              mkdir -p /tmp/staging-backup
+              
+              # Copy all files except those related to the deleted feature
+              find "environments/staging/${REPO_NAME}" -type f ! -path "*/${FEATURE_BRANCH}/*" \
+                -exec cp --parents {} /tmp/staging-backup/ \;
+            fi
+            
+            # Reset staging to match master
+            git fetch origin master:master
+            git reset --hard origin/master
+            
+            # Restore non-feature staging configurations
+            if [ -d "/tmp/staging-backup" ]; then
+              echo "Restoring staging environment configurations..."
+              cp -r /tmp/staging-backup/* environments/
+              
+              # Update environment-specific variables
+              find environments/staging -type f -name ".env" -exec sed -i'' \
+                -e "s/APP_NAME=.*$/APP_NAME=${REPO_NAME}_staging/" \
+                -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/${REPO_NAME}_staging:latest/" \
+                -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=staging.emerginary.com/" \
+                -e "s/APP_PORT=.*$/APP_PORT=6002/" \
+                -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=6002/" \
+                -e "s/ENVIRONMENT=.*$/ENVIRONMENT=staging/" {} +
+              
+              # Clean up backup
+              rm -rf /tmp/staging-backup
+            fi
+            
+            # Commit and push changes
+            git add environments/staging
+            git commit -m "Clean up configurations for deleted feature branch ${FEATURE_BRANCH}" || echo "No changes to commit"
+            git push origin staging
+          else
+            echo "Found open PRs to staging, skipping cleanup to avoid conflicts"
+            echo "Number of open PRs: $OPEN_PRS"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
