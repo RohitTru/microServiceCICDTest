@@ -12,7 +12,9 @@
         "start": 6000,
         "end": 6999
       },
-      "assignments": {}
+      "assignments": {
+        "microServiceCICDTest/staging": 6000
+      }
     },
     "production": {
       "port_range": {
