@@ -5,15 +5,16 @@
         "start": 5000,
         "end": 5999
       },
-      "assignments": {}
+      "assignments": {
+        "microServiceCICDTest/feature-test": 5000
+      }
     },
     "staging": {
       "port_range": {
         "start": 6000,
         "end": 6999
       },
-      "assignments": {
-      }
+      "assignments": {}
     },
     "production": {
       "port_range": {
