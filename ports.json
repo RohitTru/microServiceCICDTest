@@ -16,7 +16,8 @@
         "end": 6999
       },
       "assignments": {
-        "staging": 6000
+        "staging": 6000,
+        "refs/pull/2/merge": 6001
       }
     },
     "production": {
