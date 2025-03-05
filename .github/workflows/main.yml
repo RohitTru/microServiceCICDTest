@@ -339,9 +339,7 @@ jobs:
         if: always()
         run: |
           if [ -d "${{ env.TEST_REPORTS_DIR }}" ]; then
-            echo "Generating test report in ${{ env.TEST_REPORTS_DIR }}"
-            cat > generate_report.py << 'EOL'
-import json
+            cat << 'EOF' > generate_report.py
 import os
 import glob
 from datetime import datetime
@@ -377,7 +375,7 @@ with open(report_file, "w") as f:
     for test_type in test_types:
         status = "✅ Completed" if os.path.exists(os.path.join(report_dir, f"coverage-{test_type}.xml")) else "⚪ Not Required"
         f.write(f"| {test_type.capitalize()} | {status} |\n")
-EOL
+EOF
             python generate_report.py
             rm generate_report.py
           else
