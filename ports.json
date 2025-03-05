@@ -17,7 +17,7 @@
       },
       "assignments": {
         "microServiceCICDTest/feature-helpmore": 6001,
-        "microServiceCICDTest/feature-again": 6000
+        "microServiceCICDTest/feature-again": 6002
       }
     },
     "production": {
