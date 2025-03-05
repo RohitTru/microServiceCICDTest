@@ -100,103 +100,45 @@ jobs:
         run: |
           chmod +x scripts/port_manager.py
           
-          # Function to handle port assignment with retries
-          handle_port_operation() {
-            local max_retries=3
-            local retry_count=0
-            local success=false
-            
-            while [ $retry_count -lt $max_retries ] && [ "$success" = false ]; do
-              if [ $retry_count -gt 0 ]; then
-                echo "Retrying port operation (attempt $((retry_count + 1)) of $max_retries)..."
-                sleep 5
-              fi
-              
-              if "$@"; then
-                success=true
-              else
-                retry_count=$((retry_count + 1))
-                if [ $retry_count -eq $max_retries ]; then
-                  echo "Error: Port operation failed after $max_retries attempts"
-                  exit 1
-                fi
-              fi
-            done
-          }
-          
-          # Function to safely update ports.json
-          update_ports_json() {
-            # Stash any current changes
-            git stash
-            
-            # Try to update master
-            if ! git checkout master; then
-              echo "Error: Could not checkout master branch"
-              git stash pop
-              return 1
-            fi
-            
-            if ! git pull origin master; then
-              echo "Error: Could not pull latest changes from master"
-              git checkout - && git stash pop
-              return 1
-            fi
-            
-            # Create a backup of ports.json
-            if [ -f "ports.json" ]; then
-              cp ports.json "ports.json.backup.$(date +%Y%m%d_%H%M%S)"
-            fi
-            
-            git add ports.json
-            git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }} in ${{ env.TARGET_ENV }}" || echo "No changes to commit"
-            
-            if ! git push origin master; then
-              echo "Warning: Could not push to master, will retry with updated changes"
-              git pull --rebase origin master
-              if ! git push origin master; then
-                echo "Error: Could not push to master even after rebase"
-                git checkout - && git stash pop
-                return 1
-              fi
-            fi
-            
-            # Return to original branch and restore changes
-            git checkout -
-            git stash pop || true
-            return 0
-          }
-          
           # Main port assignment logic
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
-              echo "Migrating port for merged PR from ${{ env.SOURCE_ENV }} to ${{ env.TARGET_ENV }}"
-              handle_port_operation ./scripts/port_manager.py migrate "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.SOURCE_ENV }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
-              
-              echo "Releasing port from source environment"
-              handle_port_operation ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.SOURCE_ENV }}"
+              # When PR is merged to staging, assign a staging port
+              echo "Assigning staging port for merged PR"
+              ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
             else
-              echo "Assigning port for PR in ${{ env.TARGET_ENV }}"
-              handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
+              # For open PRs, verify port assignment
+              echo "Verifying port assignment"
+              ./scripts/port_manager.py verify "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
             fi
           else
+            # For direct pushes, assign a port if needed
             echo "Assigning port for ${{ env.BRANCH_NAME }} in ${{ env.TARGET_ENV }}"
-            handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
+            ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
           fi
           
           echo "Assigned port: ${{ env.APP_PORT }}"
           
+          # Sync ports.json across branches
+          git fetch origin
+          git checkout master
+          git pull origin master
+          
           # Update ports.json in master
-          if ! update_ports_json; then
-            echo "Warning: Failed to update ports.json in master branch"
-            # Continue anyway as this is not critical
-          fi
-          
-          # Sync ports.json from master
-          git fetch origin master:master || true
-          git checkout master -- ports.json || true
-          
           git add ports.json
-          git commit -m "Sync ports.json from master" || echo "No changes to commit"
+          git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Could not push to master"
+          
+          # Sync to staging
+          git checkout staging
+          git pull origin staging
+          git merge master --no-edit || echo "Could not merge master into staging"
+          git push origin staging || echo "Could not push to staging"
+          
+          # Return to original branch and sync ports.json
+          git checkout "${{ env.BRANCH_NAME }}"
+          git pull origin "${{ env.BRANCH_NAME }}"
+          git merge master --no-edit || echo "Could not merge master into feature branch"
           git push origin "${{ env.BRANCH_NAME }}" || echo "Could not push to feature branch"
 
       - name: Setup Environment Manager
@@ -704,18 +646,18 @@ jobs:
         if: github.event.pull_request.merged == true
         run: |
           # Create staging directory if it doesn't exist
-          mkdir -p "environments/staging/${{ github.event.repository.name }}"
+          mkdir -p "environments/staging/${{ env.BRANCH_NAME }}"
           
-          # Copy feature branch files to staging while preserving feature environment
-          cp -r "environments/development/${{ github.event.repository.name }}/${{ github.head_ref }}/"* "environments/staging/${{ github.event.repository.name }}/"
+          # Copy feature branch files to staging (non-destructive)
+          cp -r "environments/development/${{ env.BRANCH_NAME }}"/* "environments/staging/${{ env.BRANCH_NAME }}/"
           
-          # Update staging .env with new port
-          sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ github.event.repository.name }}/.env"
-          sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ github.event.repository.name }}/.env"
+          # Update staging .env with new port and environment
+          sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
           
           # Commit and push changes
           git add environments/staging
-          git commit -m "Update staging environment for ${{ github.head_ref }}"
+          git commit -m "Copy ${{ env.BRANCH_NAME }} to staging environment (non-destructive)"
           git push origin staging
 
   cleanup-feature:
