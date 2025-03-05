@@ -98,43 +98,99 @@ jobs:
         run: |
           chmod +x scripts/port_manager.py
           
+          # Function to handle port assignment with retries
+          handle_port_operation() {
+            local max_retries=3
+            local retry_count=0
+            local success=false
+            
+            while [ $retry_count -lt $max_retries ] && [ "$success" = false ]; do
+              if [ $retry_count -gt 0 ]; then
+                echo "Retrying port operation (attempt $((retry_count + 1)) of $max_retries)..."
+                sleep 5
+              fi
+              
+              if "$@"; then
+                success=true
+              else
+                retry_count=$((retry_count + 1))
+                if [ $retry_count -eq $max_retries ]; then
+                  echo "Error: Port operation failed after $max_retries attempts"
+                  exit 1
+                fi
+              fi
+            done
+          }
+          
+          # Function to safely update ports.json
+          update_ports_json() {
+            # Create a backup of ports.json
+            if [ -f "ports.json" ]; then
+              cp ports.json "ports.json.backup.$(date +%Y%m%d_%H%M%S)"
+            fi
+            
+            # Try to update master
+            if ! git checkout master; then
+              echo "Error: Could not checkout master branch"
+              return 1
+            fi
+            
+            if ! git pull origin master; then
+              echo "Error: Could not pull latest changes from master"
+              return 1
+            fi
+            
+            git add ports.json
+            git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
+            
+            if ! git push origin master; then
+              echo "Warning: Could not push to master, will retry with updated changes"
+              git pull --rebase origin master
+              if ! git push origin master; then
+                echo "Error: Could not push to master even after rebase"
+                return 1
+              fi
+            fi
+            
+            return 0
+          }
+          
+          # Main port assignment logic
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
-              # Handle port migration for merged PRs
               echo "Migrating port for merged PR from $SOURCE_ENV to $TARGET_ENV"
-              ./scripts/port_manager.py migrate "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
+              handle_port_operation ./scripts/port_manager.py migrate "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV" "$TARGET_ENV" >> $GITHUB_ENV
               
-              # Release the old port from source environment
-              ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV"
+              echo "Releasing port from source environment"
+              handle_port_operation ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV"
             else
-              # For open PRs, just assign a port in the target environment
               echo "Assigning port for PR in $TARGET_ENV"
-              ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+              handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
             fi
           else
-            # Normal port assignment for push events
             echo "Assigning port for $BRANCH_NAME in $TARGET_ENV"
-            ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
+            handle_port_operation ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$TARGET_ENV" >> $GITHUB_ENV
           fi
           
           echo "Assigned port: ${{ env.APP_PORT }}"
           
-          # Save any changes to stash
-          git stash push -u
-
-          # Switch to master and update ports.json
-          git checkout master
-          git pull origin master
-          git add ports.json
-          git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
-          git push origin master || echo "Could not push to master"
+          # Update ports.json in master
+          if ! update_ports_json; then
+            echo "Warning: Failed to update ports.json in master branch"
+            # Continue anyway as this is not critical
+          fi
           
           # Return to original branch and sync ports.json
-          git checkout $BRANCH_NAME
-          git checkout master -- ports.json
+          if ! git checkout $BRANCH_NAME; then
+            echo "Error: Could not return to original branch"
+            exit 1
+          fi
           
-          # Pop stashed changes if any
-          git stash pop || echo "No stash to pop"
+          # Sync ports.json from master
+          if ! git checkout master -- ports.json; then
+            echo "Error: Could not sync ports.json from master"
+            exit 1
+          fi
           
           git add ports.json
           git commit -m "Sync ports.json from master" || echo "No changes to commit"
