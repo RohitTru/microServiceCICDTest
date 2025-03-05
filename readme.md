@@ -130,6 +130,24 @@ git commit -m "your commit message"
 git push origin master
 ```
 
+If you need to manually reset the staging branch to match master:
+```bash
+# First, backup any important staging-specific configurations
+git checkout staging
+git diff origin/master > staging-changes.patch
+
+# Reset staging to match master
+git fetch origin
+git reset --hard origin/master
+git push -f origin staging
+
+# If needed, reapply staging-specific configurations
+git apply staging-changes.patch
+git add .
+git commit -m "Restore staging-specific configurations"
+git push origin staging
+```
+
 ## CI/CD Pipeline Workflow
 
 Our CI/CD pipeline automates the entire process of developing, testing, and deploying microservices across different environments. Here's a detailed guide on how it works:
