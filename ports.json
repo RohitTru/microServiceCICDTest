@@ -5,14 +5,18 @@
         "start": 5000,
         "end": 5999
       },
-      "assignments": {}
+      "assignments": {
+        "feature-test-infra": 5000
+      }
     },
     "staging": {
       "port_range": {
         "start": 6000,
         "end": 6999
       },
-      "assignments": {}
+      "assignments": {
+        "staging": 6000
+      }
     },
     "production": {
       "port_range": {
@@ -20,7 +24,8 @@
         "end": 7999
       },
       "assignments": {
-        "master": 7000
+        "master": 7000,
+        "microServiceCICDTest/feature-improve-staging-workflow": 7001
       }
     }
   }
