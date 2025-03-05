@@ -646,18 +646,85 @@ jobs:
         run: |
           echo "Updating environment configuration for staging..."
           
+          # Get repository name as microservice name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          
+          # Create staging environment directory if it doesn't exist
+          mkdir -p "environments/staging/${REPO_NAME}"
+          
+          # Copy files from development if they exist
+          if [ -d "environments/development/${REPO_NAME}" ]; then
+            cp -r environments/development/${REPO_NAME}/* "environments/staging/${REPO_NAME}/"
+          fi
+          
           # Update environment variables for staging
-          if [ -d "environments/staging" ]; then
-            find environments/staging -type f -name ".env" -exec sed -i'' \
-              -e "s/APP_NAME=.*$/APP_NAME=microServiceCICDTest_staging/" \
-              -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/microservicecicdtest_staging:latest/" \
-              -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=staging.emerginary.com/" \
-              -e "s/APP_PORT=.*$/APP_PORT=6002/" \
-              -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=6002/" \
-              -e "s/ENVIRONMENT=.*$/ENVIRONMENT=staging/" {} +
+          find environments/staging -type f -name ".env" -exec sed -i'' \
+            -e "s/APP_NAME=.*$/APP_NAME=${REPO_NAME}_staging/" \
+            -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/${REPO_NAME}_staging:latest/" \
+            -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=staging.emerginary.com/" \
+            -e "s/APP_PORT=.*$/APP_PORT=6002/" \
+            -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=6002/" \
+            -e "s/ENVIRONMENT=.*$/ENVIRONMENT=staging/" {} +
+          
+          # Clean up development-specific configurations
+          if [ -d "environments/development" ]; then
+            git rm -rf environments/development || echo "No development environment to remove"
+          fi
+          
+          # Commit the changes
+          git add environments/
+          git commit -m "Update environment configuration for staging" || echo "No changes to commit"
+          git push origin ${{ github.head_ref }}
+
+  handle-master-pr:
+    name: Handle Master PR Merge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      github.event_name == 'pull_request' && 
+      github.base_ref == 'master' &&
+      (github.event.action == 'opened' || github.event.action == 'synchronize')
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Update Environment Configuration
+        run: |
+          echo "Updating environment configuration for production..."
+          
+          # Get repository name as microservice name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          
+          # Update environment variables for production
+          if [ -d "environments/production" ]; then
+            find environments/production -type f -name ".env" -exec sed -i'' \
+              -e "s/APP_NAME=.*$/APP_NAME=${REPO_NAME}_master/" \
+              -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/${REPO_NAME}_master:latest/" \
+              -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=master.emerginary.com/" \
+              -e "s/APP_PORT=.*$/APP_PORT=7001/" \
+              -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=7001/" \
+              -e "s/ENVIRONMENT=.*$/ENVIRONMENT=production/" {} +
             
             # Commit the changes
-            git add environments/staging
-            git commit -m "Update environment configuration for staging" || echo "No changes to commit"
+            git add environments/production
+            git commit -m "Update environment configuration for production" || echo "No changes to commit"
+            git push origin ${{ github.head_ref }}
+          fi
+          
+          # Clean up staging-specific configurations if they exist
+          if [ -d "environments/staging" ]; then
+            git rm -rf environments/staging || echo "No staging environment to remove"
+            git commit -m "Remove staging environment configurations" || echo "No changes to commit"
             git push origin ${{ github.head_ref }}
           fi
