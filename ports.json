@@ -25,7 +25,8 @@
         "end": 7999
       },
       "assignments": {
-        "master": 7000
+        "master": 7000,
+        "microServiceCICDTest/master": 7001
       }
     }
   }
