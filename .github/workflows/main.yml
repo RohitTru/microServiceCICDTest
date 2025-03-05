@@ -14,6 +14,8 @@ on:
   delete:
     branches:
       - "feature-*"
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight
 
 jobs:
   build-feature-app:
@@ -493,3 +495,97 @@ jobs:
           fi
           
           echo "✅ Repository state verified - cleanup successful"
+
+  sync-staging:
+    name: Sync Staging with Master
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: write
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/master' && 
+      !contains(github.event.head_commit.message, 'Skip staging sync') ||
+      github.event_name == 'schedule'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Sync Staging with Master
+        run: |
+          # Check if staging branch exists, create if it doesn't
+          if ! git ls-remote --heads origin staging | grep staging > /dev/null; then
+            echo "Creating staging branch from master..."
+            git checkout -b staging
+            git push -u origin staging
+          else
+            git checkout staging
+          fi
+
+          # Check if there are any open PRs targeting staging
+          OPEN_PRS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls?base=staging&state=open" | jq length)
+          
+          if [ "$OPEN_PRS" -eq "0" ]; then
+            echo "No open PRs to staging, safe to sync with master"
+            git pull origin staging
+            git merge origin/master --no-edit
+            git push origin staging
+          else
+            echo "Found open PRs to staging, skipping sync to avoid conflicts"
+            echo "Number of open PRs: $OPEN_PRS"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+  cleanup-staging:
+    name: Cleanup Staging Environment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      github.event_name == 'pull_request' && 
+      github.event.action == 'closed' && 
+      github.base_ref == 'staging' &&
+      !github.event.pull_request.merged
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Cleanup Abandoned Feature
+        run: |
+          # Get the feature branch name
+          FEATURE_BRANCH="${{ github.head_ref }}"
+          
+          echo "Cleaning up abandoned feature $FEATURE_BRANCH from staging..."
+          
+          # Checkout staging
+          git checkout staging
+          git pull origin staging
+          
+          # Remove feature-specific files/changes by resetting to master
+          git fetch origin master:master
+          git reset --hard origin/master
+          
+          # Force push staging to be in sync with master
+          git push -f origin staging
+          
+          echo "✅ Cleaned up abandoned feature $FEATURE_BRANCH from staging"
