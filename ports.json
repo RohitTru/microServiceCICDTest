@@ -6,8 +6,7 @@
         "end": 5999
       },
       "assignments": {
-        "feature-test-infra": 5000,
-        "feature-port-test-3": 5001
+        "feature-test-infra": 5000
       }
     },
     "staging": {
