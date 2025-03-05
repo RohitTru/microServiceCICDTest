@@ -100,7 +100,7 @@ jobs:
         run: |
           chmod +x scripts/port_manager.py
           
-          # Main port assignment logic
+          # Simple port assignment logic
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             if [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
               # When PR is merged to staging, assign a staging port
@@ -108,8 +108,8 @@ jobs:
               ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
             else
               # For open PRs, verify port assignment
-              echo "Verifying port assignment"
-              ./scripts/port_manager.py verify "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
+              echo "Verifying staging port assignment"
+              ./scripts/port_manager.py verify "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
             fi
           else
             # For direct pushes, assign a port if needed
@@ -119,27 +119,10 @@ jobs:
           
           echo "Assigned port: ${{ env.APP_PORT }}"
           
-          # Sync ports.json across branches
-          git fetch origin
-          git checkout master
-          git pull origin master
-          
-          # Update ports.json in master
+          # Simple ports.json update
           git add ports.json
           git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" || echo "No changes to commit"
-          git push origin master || echo "Could not push to master"
-          
-          # Sync to staging
-          git checkout staging
-          git pull origin staging
-          git merge master --no-edit || echo "Could not merge master into staging"
-          git push origin staging || echo "Could not push to staging"
-          
-          # Return to original branch and sync ports.json
-          git checkout "${{ env.BRANCH_NAME }}"
-          git pull origin "${{ env.BRANCH_NAME }}"
-          git merge master --no-edit || echo "Could not merge master into feature branch"
-          git push origin "${{ env.BRANCH_NAME }}" || echo "Could not push to feature branch"
+          git push origin HEAD || echo "Could not push port changes"
 
       - name: Setup Environment Manager
         run: |
@@ -233,28 +216,6 @@ jobs:
             echo "ℹ️ No optional tests found in tests/ - This is expected for new feature branches"
           fi
 
-      - name: Generate Test Report
-        if: always()
-        run: |
-          chmod +x scripts/test_report_generator.py
-          
-          # Ensure TEST_REPORTS_DIR is set
-          if [[ -z "$TEST_REPORTS_DIR" ]]; then
-            if [[ -n "$APP_DIR" ]]; then
-              TEST_REPORTS_DIR="$APP_DIR/tests/test-reports"
-              echo "TEST_REPORTS_DIR=$TEST_REPORTS_DIR" >> $GITHUB_ENV
-            else
-              echo "Error: Neither TEST_REPORTS_DIR nor APP_DIR is set"
-              exit 1
-            fi
-          fi
-          
-          # Create test reports directory if it doesn't exist
-          mkdir -p "$TEST_REPORTS_DIR"
-          
-          # Run test report generator
-          ./scripts/test_report_generator.py
-
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -264,28 +225,6 @@ jobs:
             ${{ env.APP_DIR }}/tests/test-reports/
             ${{ env.APP_DIR }}/tests/test-reports/.coverage
             ${{ env.APP_DIR }}/tests/test-reports/coverage*.xml
-
-      - name: Comment PR with Test Results
-        if: github.event_name == 'pull_request' && always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const testReport = fs.readFileSync('${{ env.APP_DIR }}/tests/test-reports/test-report.md', 'utf8');
-            
-            const comment = `## 🧪 Test Results
-            
-            ${testReport}
-            
-            [View detailed test reports](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
-            `;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
 
       - name: Commit Test Reports
         run: |
