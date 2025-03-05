@@ -13,7 +13,6 @@
         "end": 6999
       },
       "assignments": {
-        "microServiceCICDTest/staging": 6000
       }
     },
     "production": {
