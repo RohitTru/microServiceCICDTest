@@ -124,33 +124,63 @@ jobs:
           
           # Function to safely update ports.json
           update_ports_json() {
-            # Create a backup of ports.json
+            # Ensure we're working with the latest changes
+            git fetch origin master
+            
+            # Create a backup of current ports.json
             if [ -f "ports.json" ]; then
               cp ports.json "ports.json.backup.$(date +%Y%m%d_%H%M%S)"
             fi
             
-            # Try to update master
+            # Save current branch name
+            current_branch=$(git rev-parse --abbrev-ref HEAD)
+            
+            # Stash any changes in current branch
+            git stash push -m "Temporary stash before port update"
+            
+            # Try to checkout master
             if ! git checkout master; then
               echo "Error: Could not checkout master branch"
+              git stash pop || true
               return 1
             fi
             
+            # Pull latest changes from master
             if ! git pull origin master; then
               echo "Error: Could not pull latest changes from master"
+              git checkout "$current_branch" || true
+              git stash pop || true
               return 1
             fi
             
+            # Add and commit ports.json changes
             git add ports.json
-            git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $TARGET_ENV" || echo "No changes to commit"
-            
-            if ! git push origin master; then
-              echo "Warning: Could not push to master, will retry with updated changes"
-              git pull --rebase origin master
+            if ! git diff --cached --quiet; then
+              git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $TARGET_ENV"
+              
+              # Try to push changes
               if ! git push origin master; then
-                echo "Error: Could not push to master even after rebase"
-                return 1
+                echo "Warning: Could not push to master, will retry with rebase"
+                git pull --rebase origin master
+                if ! git push origin master; then
+                  echo "Error: Could not push to master even after rebase"
+                  git checkout "$current_branch" || true
+                  git stash pop || true
+                  return 1
+                fi
               fi
+            else
+              echo "No changes to commit in ports.json"
             fi
+            
+            # Return to original branch
+            if ! git checkout "$current_branch"; then
+              echo "Error: Could not return to original branch"
+              return 1
+            fi
+            
+            # Apply stashed changes if any
+            git stash pop || true
             
             return 0
           }
@@ -180,21 +210,18 @@ jobs:
             # Continue anyway as this is not critical
           fi
           
-          # Return to original branch and sync ports.json
-          if ! git checkout $BRANCH_NAME; then
-            echo "Error: Could not return to original branch"
-            exit 1
-          fi
-          
           # Sync ports.json from master
+          git fetch origin master
           if ! git checkout master -- ports.json; then
             echo "Error: Could not sync ports.json from master"
-            exit 1
+            # Try alternative approach
+            cp "ports.json.backup."* ports.json 2>/dev/null || true
           fi
           
+          # Commit and push changes
           git add ports.json
           git commit -m "Sync ports.json from master" || echo "No changes to commit"
-          git push origin $BRANCH_NAME || echo "Could not push to feature branch"
+          git push origin "$BRANCH_NAME" || echo "Could not push to feature branch"
 
       - name: Setup Environment Manager
         run: |
