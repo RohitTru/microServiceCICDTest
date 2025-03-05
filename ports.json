@@ -6,8 +6,7 @@
         "end": 5999
       },
       "assignments": {
-        "feature-test-infra": 5000,
-        "microServiceCICDTest/feature-test": 5001
+        "feature-test-infra": 5000
       }
     },
     "staging": {
@@ -17,7 +16,13 @@
       },
       "assignments": {
         "staging": 6000,
+<<<<<<< Updated upstream
         "refs/pull/2/merge": 6001
+=======
+        "refs/pull/2/merge": 6001,
+        "microServiceCICDTest/staging": 6002,
+        "microServiceCICDTest/feature-test": 6003
+>>>>>>> Stashed changes
       }
     },
     "production": {
