@@ -6,7 +6,6 @@
         "end": 5999
       },
       "assignments": {
-        "microServiceCICDTest/feature-test": 5000
       }
     },
     "staging": {
@@ -15,8 +14,6 @@
         "end": 6999
       },
       "assignments": {
-        "staging": 6000,
-        "microServiceCICDTest/feature-test": 6001
       }
     },
     "production": {
