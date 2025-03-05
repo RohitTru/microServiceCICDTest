@@ -140,9 +140,10 @@ jobs:
 
       - name: Create App Folder and .env
         run: |
-          # Create environment directory structure
+          # Create environment directory structure with proper permissions
           echo "Creating environment directory structure..."
-          mkdir -p "environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
+          sudo mkdir -p "environments/${{ env.TARGET_ENV }}/${{ env.MICROSERVICE_NAME }}"
+          sudo chmod -R 777 environments
           
           # For feature branches in development, create feature-specific directory
           if [[ "${{ env.TARGET_ENV }}" == "development" ]]; then
