@@ -537,8 +537,37 @@ jobs:
           
           if [ "$OPEN_PRS" -eq "0" ]; then
             echo "No open PRs to staging, safe to sync with master"
+            
+            # Store current staging environment configurations
+            if [ -d "environments/staging" ]; then
+              echo "Backing up staging environment configurations..."
+              mkdir -p /tmp/staging-backup
+              cp -r environments/staging/* /tmp/staging-backup/
+            fi
+            
+            # Merge master into staging
             git pull origin staging
             git merge origin/master --no-edit
+            
+            # Restore staging-specific configurations
+            if [ -d "/tmp/staging-backup" ]; then
+              echo "Restoring staging environment configurations..."
+              cp -r /tmp/staging-backup/* environments/staging/
+              
+              # Update environment-specific variables
+              find environments/staging -type f -name ".env" -exec sed -i'' \
+                -e 's/APP_NAME=.*_master/APP_NAME=microServiceCICDTest_staging/' \
+                -e 's/APP_IMAGE=.*:latest/APP_IMAGE=rohittru\/microservicecicdtest_staging:latest/' \
+                -e 's/VIRTUAL_HOST=master\./VIRTUAL_HOST=staging./' \
+                -e 's/ENVIRONMENT=production/ENVIRONMENT=staging/' {} +
+              
+              # Clean up backup
+              rm -rf /tmp/staging-backup
+            fi
+            
+            # Commit and push changes
+            git add environments/staging
+            git commit -m "Sync staging with master while preserving staging-specific configs" || echo "No changes to commit"
             git push origin staging
           else
             echo "Found open PRs to staging, skipping sync to avoid conflicts"
@@ -589,3 +618,46 @@ jobs:
           git push -f origin staging
           
           echo "✅ Cleaned up abandoned feature $FEATURE_BRANCH from staging"
+
+  handle-staging-pr:
+    name: Handle Staging PR Merge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      github.event_name == 'pull_request' && 
+      github.base_ref == 'staging' &&
+      github.event.action == 'opened' || github.event.action == 'synchronize'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Update Environment Configuration
+        run: |
+          echo "Updating environment configuration for staging..."
+          
+          # Update environment variables for staging
+          if [ -d "environments/staging" ]; then
+            find environments/staging -type f -name ".env" -exec sed -i'' \
+              -e "s/APP_NAME=.*$/APP_NAME=microServiceCICDTest_staging/" \
+              -e "s/APP_IMAGE=.*$/APP_IMAGE=rohittru\/microservicecicdtest_staging:latest/" \
+              -e "s/VIRTUAL_HOST=.*$/VIRTUAL_HOST=staging.emerginary.com/" \
+              -e "s/APP_PORT=.*$/APP_PORT=6002/" \
+              -e "s/VIRTUAL_PORT=.*$/VIRTUAL_PORT=6002/" \
+              -e "s/ENVIRONMENT=.*$/ENVIRONMENT=staging/" {} +
+            
+            # Commit the changes
+            git add environments/staging
+            git commit -m "Update environment configuration for staging" || echo "No changes to commit"
+            git push origin ${{ github.head_ref }}
+          fi
