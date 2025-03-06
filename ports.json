@@ -9,7 +9,7 @@
         "microServiceCICDTest/feature-imagineIt": 5000,
         "microServiceCICDTest/feature-workplease": 5001,
         "microServiceCICDTest/feature-again": 5002,
-        "microServiceCICDTest/feature-test": 5004
+        "microServiceCICDTest/feature-test": 5003
       }
     },
     "staging": {
