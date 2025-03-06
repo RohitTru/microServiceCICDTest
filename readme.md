@@ -1,270 +1,763 @@
-# Microservices CI/CD Test
+name: Build & Deploy Feature Apps
 
-This repository demonstrates a CI/CD workflow for managing multiple microservices with automated port assignments and environment transitions.
+on:
+  push:
+    branches:
+      - "feature-*"
+      - "staging"
+      - "master"
+  pull_request:
+    types: [opened, synchronize, closed]
+    branches:
+      - "staging"
+      - "master"
+  delete:
+    branches:
+      - "feature-*"
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight
 
-## Directory Structure
+env:
+  DOCKER_REGISTRY: rohittru
+  PYTHON_VERSION: '3.11'
 
-```
-environments/
-  development/
-    microServiceCICDTest/  # Your microservice name
-      feature-example/     # Your feature branch name
-        .env              # Environment-specific config (port 5xxx)
-        app.py           # Application code
-        Dockerfile       # Container configuration
-        tests/          # Test suites
-  staging/
-    microServiceCICDTest/
-      .env              # Staging config (port 6xxx)
-      app.py
-      Dockerfile
-      tests/
-  production/
-    microServiceCICDTest/
-      .env              # Production config (port 7xxx)
-      app.py
-      Dockerfile
-      tests/
-```
+jobs:
+  build-feature-app:
+    name: Build & Deploy Feature App
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && github.ref != 'refs/heads/master' && github.ref != 'refs/heads/staging') || 
+      (github.event_name == 'pull_request' && github.event.action != 'closed')
 
-## Special Branches
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get all branches
 
-### feature-test-infra
-This is a protected branch that contains the initial infrastructure setup and testing framework. Do not delete this branch as it serves as a reference implementation.
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-## Port Ranges
+      - name: Extract Branch and Environment Info
+        run: |
+          # Get repository name as microservice name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
+          
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+            echo "TARGET_BRANCH=${{ github.base_ref }}" >> $GITHUB_ENV
+          else
+            echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+          fi
+          
+          # Determine environment based on branch or PR target
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [[ "${{ github.base_ref }}" == "master" ]]; then
+              echo "TARGET_ENV=production" >> $GITHUB_ENV
+              echo "SOURCE_ENV=staging" >> $GITHUB_ENV
+            elif [[ "${{ github.base_ref }}" == "staging" ]]; then
+              echo "TARGET_ENV=staging" >> $GITHUB_ENV
+              echo "SOURCE_ENV=development" >> $GITHUB_ENV
+            fi
+          else
+            if [[ "${GITHUB_REF#refs/heads/}" == "master" ]]; then
+              echo "TARGET_ENV=production" >> $GITHUB_ENV
+            elif [[ "${GITHUB_REF#refs/heads/}" == "staging" ]]; then
+              echo "TARGET_ENV=staging" >> $GITHUB_ENV
+            else
+              echo "TARGET_ENV=development" >> $GITHUB_ENV
+            fi
+          fi
 
-Each environment has its own port range to prevent conflicts:
-- Development: 5000-5999
-- Staging: 6000-6999
-- Production: 7000-7999
+      - name: Generate Version Info
+        run: |
+          # Get commit hash
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
+          
+          # Get commit count for version number
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          echo "COMMIT_COUNT=${COMMIT_COUNT}" >> $GITHUB_ENV
+          
+          # Generate timestamp
+          TIMESTAMP=$(date +'%Y%m%d%H%M%S')
+          echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
+          
+          # Combined version string
+          echo "VERSION=${COMMIT_COUNT}-${COMMIT_HASH}" >> $GITHUB_ENV
+          
+          echo "Generated version info:"
+          echo "Commit Hash: ${COMMIT_HASH}"
+          echo "Commit Count: ${COMMIT_COUNT}"
+          echo "Timestamp: ${TIMESTAMP}"
+          echo "Version: ${COMMIT_COUNT}-${COMMIT_HASH}"
 
-## Working with Feature Branches
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
 
-### Creating a Feature Branch
-```bash
-git checkout -b feature-{name} 
-git push origin feature-{name}
-git pull origin feature-{name} --rebase
-```
+      - name: Handle Port Assignment
+        run: |
+          chmod +x scripts/port_manager.py
+          
+          # For pull requests to staging, always assign a new port
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.base_ref }}" == "staging" ]]; then
+            echo "Assigning new port for staging PR"
+            ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
+          else
+            # For direct pushes, assign a port for the target environment
+            echo "Assigning port for ${{ env.BRANCH_NAME }} in ${{ env.TARGET_ENV }}"
+            ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "${{ env.TARGET_ENV }}" >> $GITHUB_ENV
+          fi
+          
+          echo "Assigned port: ${{ env.APP_PORT }}"
+          
+          # First commit to current branch
+          git add ports.json
+          git commit -m "Update port assignments for ${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin HEAD || echo "Could not push port changes"
+          
+          # Now sync to master branch
+          git fetch origin master
+          git checkout master
+          git pull origin master
+          
+          # Copy the ports.json from feature branch
+          git checkout HEAD@{1} -- ports.json
+          
+          # Commit and push to master
+          git add ports.json
+          git commit -m "Sync port assignments from ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Could not push to master"
+          
+          # Return to original branch
+          git checkout -
 
-### Running Your Feature Branch Locally
-```bash
-# The .env file will be in environments/development/microservice-name/feature-name/
-docker compose --env-file environments/development/microservice-name/feature-name/.env up -d
-```
+      - name: Setup Environment Manager
+        run: |
+          chmod +x scripts/environment_manager.py
+          
+          # Track feature branch for all environments
+          if [[ "${{ github.event_name }}" == "push" && "${{ env.BRANCH_NAME }}" =~ ^feature- ]]; then
+            ./scripts/environment_manager.py track --branch "${{ env.BRANCH_NAME }}" --microservice "${{ env.MICROSERVICE_NAME }}"
+          fi
 
-### Running Staging Environment
-```bash
-# The .env file will be in environments/staging/microservice-name/
-docker compose --env-file environments/staging/microservice-name/.env up -d
-```
+      - name: Setup App Environment
+        run: |
+          # Create environment directory based on branch type
+          if [[ "${{ env.BRANCH_NAME }}" =~ ^feature- ]]; then
+            APP_DIR="environments/development/${{ env.BRANCH_NAME }}"
+          elif [[ "${{ env.BRANCH_NAME }}" == "staging" ]]; then
+            APP_DIR="environments/staging/${{ env.MICROSERVICE_NAME }}"
+          else
+            APP_DIR="environments/production/${{ env.MICROSERVICE_NAME }}"
+          fi
 
-### Running Production Environment
-```bash
-# The .env file will be in environments/production/microservice-name/
-docker compose --env-file environments/production/microservice-name/.env up -d
-```
+          # Create directory and copy template
+          mkdir -p "$APP_DIR"
+          cp -r app-template/* "$APP_DIR/"
 
-### Cleaning Up Feature Branches
-```bash
-git branch -D feature-{name}
-git push origin --delete feature-{name}
-```
+          # Create test reports directory
+          mkdir -p "$APP_DIR/tests/test-reports"
+          echo "TEST_REPORTS_DIR=$APP_DIR/tests/test-reports" >> $GITHUB_ENV
+          
+          # Generate .env file
+          {
+            echo "APP_NAME=${{ env.MICROSERVICE_NAME }}_${{ env.BRANCH_NAME }}"
+            echo "APP_IMAGE=rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}"
+            echo "APP_PORT=${{ env.APP_PORT }}"
+            echo "VIRTUAL_HOST=${{ env.BRANCH_NAME }}.emerginary.com"
+            echo "VIRTUAL_PORT=${{ env.APP_PORT }}"
+            echo "REDIS_HOST=redis"
+            echo "ENABLE_SSL=false"
+            echo "APP_VERSION=${{ env.VERSION }}"
+            echo "APP_COMMIT=${{ env.COMMIT_HASH }}"
+            echo "BUILD_TIMESTAMP=${{ env.TIMESTAMP }}"
+            echo "ENVIRONMENT=${{ env.TARGET_ENV }}"
+          } > "$APP_DIR/.env"
+          
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
 
-## Environment Transitions
+      - name: Install Test Dependencies
+        run: |
+          cd "${{ env.APP_DIR }}"
+          echo "Current directory: $(pwd)"
+          echo "Contents of current directory:"
+          ls -la
+          echo "Contents of requirements.txt:"
+          cat requirements.txt
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
 
-1. Development to Staging:
-   - Create PR from feature branch to staging
-   - Feature branch environment remains active for continued development
-   - A new staging environment is created with a port in 6xxx range
-   - Original feature branch port (5xxx) remains available for development
-   - Feature environment is only cleaned up when the feature branch is explicitly deleted
+      - name: Run Mandatory Tests
+        continue-on-error: true
+        run: |
+          cd "$APP_DIR"
+          echo "Running mandatory tests..."
+          if [ -f "tests/test_mandatory.py" ]; then
+            echo "Found mandatory tests at tests/test_mandatory.py"
+            PYTHONPATH=. python -m pytest tests/test_mandatory.py --cov=. --cov-report=xml:tests/test-reports/coverage-mandatory.xml -v
+          else
+            echo "ℹ️ No mandatory tests found in tests/ - This is expected for new feature branches"
+          fi
 
-2. Staging to Production:
-   - Create PR from staging to master
-   - Port will be migrated from 6xxx to 7xxx range
-   - Staging port will be released
+      - name: Run Recommended Tests
+        continue-on-error: true
+        run: |
+          cd "$APP_DIR"
+          echo "Running recommended tests..."
+          if [ -f "tests/test_recommended.py" ]; then
+            echo "Found recommended tests at tests/test_recommended.py"
+            PYTHONPATH=. python -m pytest tests/test_recommended.py --cov=. --cov-report=xml:tests/test-reports/coverage-recommended.xml -v
+          else
+            echo "ℹ️ No recommended tests found in tests/ - This is expected for new feature branches"
+          fi
 
-## Additional Setup
+      - name: Run Optional Tests
+        continue-on-error: true
+        run: |
+          cd "$APP_DIR"
+          echo "Running optional tests..."
+          if [ -f "tests/test_optional.py" ]; then
+            echo "Found optional tests at tests/test_optional.py"
+            PYTHONPATH=. python -m pytest tests/test_optional.py --cov=. --cov-report=xml:tests/test-reports/coverage-optional.xml -v
+          else
+            echo "ℹ️ No optional tests found in tests/ - This is expected for new feature branches"
+          fi
 
-### Creating the Docker Network
-```bash
-docker network create app-network
-```
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ env.TARGET_ENV }}-${{ env.MICROSERVICE_NAME }}
+          path: |
+            ${{ env.APP_DIR }}/tests/test-reports/
+            ${{ env.APP_DIR }}/tests/test-reports/.coverage
+            ${{ env.APP_DIR }}/tests/test-reports/coverage*.xml
 
-### Setting Up Development Environment
-```bash
-./setup.sh
-```
+      - name: Commit Test Reports
+        run: |
+          cd "$APP_DIR"
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add tests/test-reports
+          git commit -m "Add test reports for ${{ env.MICROSERVICE_NAME }} in ${{ env.TARGET_ENV }}" || echo "No changes to commit"
+          git push origin HEAD:${{ env.BRANCH_NAME }}
 
-## Understanding the Workflow
+      - name: Commit and Push App Folder
+        run: |
+          git add "environments" ports.json
+          git commit -m "Update ${{ env.MICROSERVICE_NAME }} in ${{ env.TARGET_ENV }}" || echo "No changes to commit"
+          git push origin HEAD:${{ env.BRANCH_NAME }}
 
-1. When you create a feature branch:
-   - Gets assigned a port in the 5000-5999 range
-   - Creates environment files in `environments/development/microservice-name/feature-name/`
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-2. When you merge to staging:
-   - Gets assigned a port in the 6000-6999 range
-   - Creates environment files in `environments/staging/microservice-name/`
-   - Releases the development port
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./app-template/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:${{ env.BRANCH_NAME }}
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:latest
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache,mode=max
 
-3. When you merge to production (master):
-   - Gets assigned a port in the 7000-7999 range
-   - Creates environment files in `environments/production/microservice-name/`
-   - Releases the staging port
+      - name: Clean Up Workspace After Build
+        run: |
+          echo "Cleaning up temporary files..."
+          rm -rf "./master" || true
 
-Each environment directory contains:
-- `.env` file with environment-specific configuration
-- `README.md` with environment details and instructions
-- Application code and tests
-- Test reports and coverage data
+  cleanup:
+    if: github.event_name == 'delete' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == false)
+    runs-on: ubuntu-latest
 
-## Troubleshooting
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-If you need to sync your local branch with master:
-```bash
-git stash
-git pull origin master --rebase
-git stash pop
-git add -A
-git commit -m "your commit message"
-git push origin master
-```
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-If you need to manually reset the staging branch to match master:
-```bash
-# First, backup any important staging-specific configurations
-git checkout staging
-git diff origin/master > staging-changes.patch
+      - name: Extract Branch Info
+        run: |
+          # Get repository name as microservice name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
+          
+          if [[ "${{ github.event_name }}" == "delete" ]]; then
+            echo "BRANCH_NAME=${{ github.event.ref }}" >> $GITHUB_ENV
+          else
+            echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+          fi
+          
+          # Determine environment
+          if [[ "$BRANCH_NAME" == "master" ]]; then
+            echo "SOURCE_ENV=production" >> $GITHUB_ENV
+          elif [[ "$BRANCH_NAME" == "staging" ]]; then
+            echo "SOURCE_ENV=staging" >> $GITHUB_ENV
+          else
+            echo "SOURCE_ENV=development" >> $GITHUB_ENV
+          fi
 
-# Reset staging to match master
-git fetch origin
-git reset --hard origin/master
-git push -f origin staging
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
 
-# If needed, reapply staging-specific configurations
-git apply staging-changes.patch
-git add .
-git commit -m "Restore staging-specific configurations"
-git push origin staging
-```
+      - name: Release Port
+        run: |
+          git checkout master
+          git pull origin master
+          
+          chmod +x scripts/port_manager.py
+          ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME" "$SOURCE_ENV"
+          
+          git add ports.json
+          git commit -m "Release port for ${{ env.MICROSERVICE_NAME }}/$BRANCH_NAME in $SOURCE_ENV" || echo "No changes to commit"
+          git push origin master
 
-## CI/CD Pipeline Workflow
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-Our CI/CD pipeline automates the entire process of developing, testing, and deploying microservices across different environments. Here's a detailed guide on how it works:
+      - name: Remove Docker Resources
+        run: |
+          echo "Cleaning up Docker resources for $BRANCH_NAME..."
+          docker rm -f $BRANCH_NAME || true
+          docker rmi rohittru/microservicecicdtest_${BRANCH_NAME}:latest || true
+          docker rmi rohittru/microservicecicdtest_${BRANCH_NAME}:* || true  # Remove all version tags
 
-### 1. Feature Branch Development
+          TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
+            -d '{"username": "${{ secrets.DOCKER_HUB_USERNAME }}", "password": "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}"}' \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
 
-When you create a new feature branch:
-```bash
-# Create and push feature branch
-git checkout -b feature-your-feature-name
-git push -u origin feature-your-feature-name
-```
+          if [ -n "$TOKEN" ]; then
+            curl -s -X DELETE \
+              -H "Authorization: Bearer $TOKEN" \
+              "https://hub.docker.com/v2/repositories/rohittru/microservicecicdtest_${BRANCH_NAME}/"
+          fi
 
-The pipeline automatically:
-- Assigns a unique port in the 5000-5999 range
-- Creates a development environment at `environments/development/microServiceCICDTest/feature-your-feature-name/`
-- Copies template files (app.py, Dockerfile, tests, etc.)
-- Updates the .env file with the assigned port
-- Runs all test suites (mandatory, recommended, optional)
-- Builds and pushes a Docker image
+      - name: Remove App Folder
+        run: |
+          echo "Removing app folder from repository..."
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # Remove the environment-specific directory
+          if [[ "$SOURCE_ENV" == "development" ]]; then
+            git rm -rf "environments/$SOURCE_ENV/feature-branches/${{ env.BRANCH_NAME }}" || echo "No app folder to remove"
+          else
+            git rm -rf "environments/$SOURCE_ENV/current" || echo "No app folder to remove"
+          fi
+          
+          # Clean up any empty directories
+          find environments -type d -empty -delete || echo "No empty directories to clean"
+          
+          # Verify no unexpected files exist
+          echo "Verifying cleanup..."
+          if [[ "$SOURCE_ENV" == "development" ]]; then
+            if [[ -d "environments/$SOURCE_ENV/feature-branches/${{ env.BRANCH_NAME }}" ]]; then
+              echo "Error: Branch directory still exists after cleanup!"
+              exit 1
+            fi
+          else
+            if [[ -d "environments/$SOURCE_ENV/current" ]]; then
+              echo "Error: Environment directory still exists after cleanup!"
+              exit 1
+            fi
+          fi
+          
+          # Ensure only .gitkeep exists in environments if it's empty
+          if [[ $(ls -A environments | grep -v .gitkeep) ]]; then
+            echo "Warning: Found unexpected files in environments directory:"
+            ls -la environments
+            # Remove any unexpected files
+            find environments -not -name .gitkeep -type f -delete
+          fi
+          
+          git add environments
+          git commit -m "Cleanup: Removed ${{ env.MICROSERVICE_NAME }} from $SOURCE_ENV and cleaned empty directories" || echo "No changes to commit"
+          git push origin master || echo "Nothing to push"
 
-### 2. Migrating to Staging
+      - name: Verify Repository State
+        run: |
+          echo "Verifying repository state after cleanup..."
+          
+          # Check for any leftover files in environments
+          UNEXPECTED_FILES=$(find environments -type f ! -name .gitkeep)
+          if [[ -n "$UNEXPECTED_FILES" ]]; then
+            echo "Error: Found unexpected files after cleanup:"
+            echo "$UNEXPECTED_FILES"
+            exit 1
+          fi
+          
+          # Check for any empty directories that should have been cleaned
+          EMPTY_DIRS=$(find environments -type d -empty ! -name environments)
+          if [[ -n "$EMPTY_DIRS" ]]; then
+            echo "Error: Found empty directories that should have been cleaned:"
+            echo "$EMPTY_DIRS"
+            exit 1
+          fi
+          
+          echo "✅ Repository state verified - cleanup successful"
 
-When ready to test in staging:
-```bash
-# First, ensure you're on your feature branch
-git checkout feature-your-feature-name
+  sync-staging:
+    name: Sync Staging with Master
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: write
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/master' && 
+      !contains(github.event.head_commit.message, 'Skip staging sync') ||
+      github.event_name == 'schedule'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Sync Staging with Master
+        run: |
+          # Check if staging branch exists, create if it doesn't
+          if ! git ls-remote --heads origin staging | grep staging > /dev/null; then
+            echo "Creating staging branch from master..."
+            git checkout -b staging
+            git push -u origin staging
+          else
+            git checkout staging
+          fi
 
-# Create a pull request to staging
-# You can do this through GitHub UI or command line
-```
+          # Check if there are any open PRs targeting staging
+          OPEN_PRS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls?base=staging&state=open" | jq length)
+          
+          if [ "$OPEN_PRS" -eq "0" ]; then
+            echo "No open PRs to staging, safe to sync with master"
+            
+            # Backup ports.json from staging
+            if [ -f "ports.json" ]; then
+              echo "Backing up staging ports.json..."
+              cp ports.json ports.json.staging
+            fi
+            
+            # Store current staging environment configurations
+            if [ -d "environments/staging" ]; then
+              echo "Backing up staging environment configurations..."
+              mkdir -p /tmp/staging-backup
+              cp -r environments/staging/* /tmp/staging-backup/
+            fi
+            
+            # Merge master into staging
+            git pull origin staging
+            git merge origin/master --no-edit || {
+              # If merge fails, it's likely due to ports.json conflict
+              if [ -f "ports.json.staging" ]; then
+                echo "Resolving ports.json conflict..."
+                # Keep staging's port assignments
+                cp ports.json.staging ports.json
+                git add ports.json
+                git commit -m "Merge master into staging (with preserved port assignments)"
+              else
+                echo "Failed to merge master into staging"
+                exit 1
+              fi
+            }
+            
+            # Restore staging-specific configurations
+            if [ -d "/tmp/staging-backup" ]; then
+              echo "Restoring staging environment configurations..."
+              cp -r /tmp/staging-backup/* environments/staging/
+              
+              # Update environment-specific variables
+              find environments/staging -type f -name ".env" -exec sed -i'' \
+                -e 's/APP_NAME=.*_master/APP_NAME=microServiceCICDTest_staging/' \
+                -e 's/APP_IMAGE=.*:latest/APP_IMAGE=rohittru\/microservicecicdtest_staging:latest/' \
+                -e 's/VIRTUAL_HOST=master\./VIRTUAL_HOST=staging./' \
+                -e 's/ENVIRONMENT=production/ENVIRONMENT=staging/' {} +
+              
+              # Clean up backup
+              rm -rf /tmp/staging-backup
+            fi
+            
+            # Clean up ports.json backup
+            rm -f ports.json.staging
+            
+            # Commit and push changes
+            git add environments/staging ports.json
+            git commit -m "Sync staging with master while preserving staging-specific configs" || echo "No changes to commit"
+            git push origin staging
+          else
+            echo "Found open PRs to staging, skipping sync to avoid conflicts"
+            echo "Number of open PRs: $OPEN_PRS"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+  cleanup-staging:
+    name: Cleanup Staging Environment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: |
+      github.event_name == 'pull_request' && 
+      github.event.action == 'closed' && 
+      github.base_ref == 'staging' &&
+      !github.event.pull_request.merged
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+      
+      - name: Cleanup Abandoned Feature
+        run: |
+          # Get the feature branch name
+          FEATURE_BRANCH="${{ github.head_ref }}"
+          
+          echo "Cleaning up abandoned feature $FEATURE_BRANCH from staging..."
+          
+          # Checkout staging
+          git checkout staging
+          git pull origin staging
+          
+          # Remove feature-specific files/changes by resetting to master
+          git fetch origin master:master
+          git reset --hard origin/master
+          
+          # Force push staging to be in sync with master
+          git push -f origin staging
+          
+          echo "✅ Cleaned up abandoned feature $FEATURE_BRANCH from staging"
 
-The pipeline automatically:
-- Creates the staging environment at `environments/staging/microServiceCICDTest/`
-- Migrates the port from 5xxx to 6xxx range
-- Updates all configuration files with new port
-- Runs all tests again
-- Builds and pushes a new Docker image for staging
-- Releases the development port
+  handle-staging-pr:
+    name: Handle Staging PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'staging'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-### 3. Migrating to Production
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
 
-When staging is verified and ready for production:
-```bash
-# Create a pull request from staging to master
-# You can do this through GitHub UI or command line
-```
+      - name: Extract Branch Info
+        run: |
+          echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+          
+          # Get repository name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
 
-The pipeline automatically:
-- Creates the production environment at `environments/production/microServiceCICDTest/`
-- Migrates the port from 6xxx to 7xxx range
-- Updates all configuration files with new port
-- Runs all tests one final time
-- Builds and pushes a production Docker image
-- Releases the staging port
+      - name: Assign Staging Port
+        if: github.event.pull_request.merged == true
+        run: |
+          chmod +x scripts/port_manager.py
+          
+          # Assign a new port for staging
+          ./scripts/port_manager.py assign "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "staging" >> $GITHUB_ENV
+          
+          echo "New staging port assigned: ${{ env.APP_PORT }}"
 
-### 4. Cleanup Process
+      - name: Copy to Staging Environment
+        if: github.event.pull_request.merged == true
+        run: |
+          # Remove existing feature branch from staging if it exists
+          rm -rf "environments/staging/${{ env.BRANCH_NAME }}"
+          
+          # Copy feature branch files to staging
+          cp -r "environments/development/${{ env.BRANCH_NAME }}" "environments/staging/"
+          
+          # Update environment and port in staging .env file only
+          sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=staging/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          sed -i "s/APP_PORT=.*/APP_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          sed -i "s/VIRTUAL_PORT=.*/VIRTUAL_PORT=${{ env.APP_PORT }}/" "environments/staging/${{ env.BRANCH_NAME }}/.env"
+          
+          # First commit changes to staging branch
+          git add environments/staging ports.json
+          git commit -m "Copy ${{ env.BRANCH_NAME }} to staging environment with new port ${{ env.APP_PORT }}"
+          git push origin staging
+          
+          # Now sync ports.json to other branches
+          # Sync to master
+          git fetch origin master
+          git checkout master
+          git pull origin master
+          cp ports.json ports.json.new
+          git checkout staging -- ports.json
+          if ! cmp -s ports.json ports.json.new; then
+            git add ports.json
+            git commit -m "Sync port assignments from staging"
+            git push origin master
+          fi
+          
+          # Sync back to feature branch and restore its original port
+          git checkout "${{ env.BRANCH_NAME }}"
+          git pull origin "${{ env.BRANCH_NAME }}"
+          
+          # Get the original development port from ports.json
+          DEV_PORT=$(jq -r --arg key "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" --arg env "development" \
+            '.[$key][$env] // empty' ports.json)
+          
+          # Update the development .env file with the original port
+          if [ ! -z "$DEV_PORT" ]; then
+            sed -i "s/APP_PORT=.*/APP_PORT=$DEV_PORT/" "environments/development/${{ env.BRANCH_NAME }}/.env"
+            sed -i "s/VIRTUAL_PORT=.*/VIRTUAL_PORT=$DEV_PORT/" "environments/development/${{ env.BRANCH_NAME }}/.env"
+            sed -i "s/ENVIRONMENT=.*/ENVIRONMENT=development/" "environments/development/${{ env.BRANCH_NAME }}/.env"
+          fi
+          
+          # Sync ports.json from staging
+          cp ports.json ports.json.new
+          git checkout staging -- ports.json
+          if ! cmp -s ports.json ports.json.new; then
+            git add ports.json
+            git commit -m "Sync port assignments from staging"
+            git push origin "${{ env.BRANCH_NAME }}"
+          fi
+          
+          # Return to staging branch
+          git checkout staging
 
-When a feature branch is deleted or PR is closed:
-```bash
-# Delete feature branch locally and remotely
-git branch -D feature-your-feature-name
-git push origin --delete feature-your-feature-name
-```
+  cleanup-feature:
+    name: Cleanup Feature Environment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'delete' && startsWith(github.event.ref, 'feature-')
 
-The pipeline automatically:
-- Releases the assigned port
-- Removes the environment directory
-- Cleans up Docker resources
-- Updates ports.json
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-### 5. Testing Different Environments
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-To run your service in different environments:
+      - name: Extract Branch Info
+        run: |
+          BRANCH_NAME="${{ github.event.ref }}"
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "MICROSERVICE_NAME=${REPO_NAME}" >> $GITHUB_ENV
 
-```bash
-# Development (Feature Branch)
-docker compose --env-file environments/development/microServiceCICDTest/feature-your-feature-name/.env up -d
+      - name: Setup Environment Manager
+        run: |
+          chmod +x scripts/environment_manager.py
 
-# Staging
-docker compose --env-file environments/staging/microServiceCICDTest/.env up -d
+      - name: Cleanup Feature Environment
+        run: |
+          # Check if environment can be safely cleaned up
+          DEV_ENV_PATH="environments/development/${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}"
+          
+          # Attempt to cleanup the environment
+          ./scripts/environment_manager.py cleanup --target "$DEV_ENV_PATH"
+          
+          # Release the port
+          chmod +x scripts/port_manager.py
+          ./scripts/port_manager.py release "${{ env.MICROSERVICE_NAME }}/${{ env.BRANCH_NAME }}" "development"
+          
+          # Commit port changes
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add ports.json
+          git commit -m "Release port for deleted feature branch ${{ env.BRANCH_NAME }}" || echo "No changes to commit"
+          git push origin master || echo "Could not push to master"
 
-# Production
-docker compose --env-file environments/production/microServiceCICDTest/.env up -d
-```
+  build-and-deploy:
+    name: Build & Deploy App
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && github.ref != 'refs/heads/master' && github.ref != 'refs/heads/staging') || 
+      (github.event_name == 'pull_request' && github.event.action != 'closed')
 
-### 6. Monitoring and Debugging
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-- Check GitHub Actions for pipeline status and logs
-- View test reports in the Actions tab
-- Check ports.json for current port assignments
-- Environment-specific logs are in their respective directories
+      - name: Extract Branch and Environment Info
+        run: |
+          # Get repository name
+          REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+          echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_ENV
+          
+          # Get branch name
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BRANCH_NAME=${{ github.head_ref }}" >> $GITHUB_ENV
+          else
+            echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+          fi
 
-### 7. Common Issues and Solutions
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-1. Port Conflicts:
-   - Check ports.json for current assignments
-   - Ensure no local services use the same ports
-   - Delete unused feature branches to release ports
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
 
-2. Failed Tests:
-   - Check test reports in GitHub Actions
-   - Tests are in the tests/ directory of each environment
-   - Development branches can proceed with failed tests
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./app-template/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:${{ env.BRANCH_NAME }}
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:latest
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache,mode=max
 
-3. Directory Issues:
-   - Ensure you're using the correct environment path
-   - Check permissions if getting access errors
-   - Use absolute paths with docker compose
-
-4. Docker Issues:
-   - Ensure Docker is running
-   - Check if the app-network exists
-   - Try rebuilding the image with --no-cache
-
-Remember: The pipeline is designed to be fully automated. Let it handle port assignments, directory creation, and environment transitions. Don't manually modify ports.json or environment directories unless absolutely necessary.
-
-
+      - name: Create .env file
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature-')
+        run: |
+          # Copy template .env file
+          cp app-template/microservice-env-template.env feature-${{ env.BRANCH_NAME }}/.env
+          
+          # Add dynamic configuration
+          echo "BRANCH=${{ env.BRANCH_NAME }}" >> feature-${{ env.BRANCH_NAME }}/.env
+          echo "DOMAIN=feature-${{ env.BRANCH_NAME }}.stockBotWars.emerginary.com" >> feature-${{ env.BRANCH_NAME }}/.env
+          echo "APP_PORT=5000" >> feature-${{ env.BRANCH_NAME }}/.env
