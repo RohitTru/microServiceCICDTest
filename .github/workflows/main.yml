@@ -263,7 +263,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./app-template
           file: ./app-template/Dockerfile
           push: true
           tags: |
@@ -738,7 +738,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./app-template
           file: ./app-template/Dockerfile
           push: true
           tags: |
