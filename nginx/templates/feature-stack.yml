@@ -1,0 +1,41 @@
+version: '3.8'
+
+networks:
+  app-network:
+    external: true
+
+services:
+  app:
+    image: ${DOCKER_REGISTRY}/${REPO}_${BRANCH}:latest
+    container_name: feature-${BRANCH}-app
+    networks:
+      - app-network
+    environment:
+      - VIRTUAL_HOST=feature-${BRANCH}.${BASE_DOMAIN}
+      - VIRTUAL_PORT=5000
+      - LETSENCRYPT_HOST=feature-${BRANCH}.${BASE_DOMAIN}
+      - BRANCH=${BRANCH}
+      - APP_PORT=5000
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - type: bind
+        source: ${PWD}/feature-${BRANCH}/.env
+        target: /app/.env
+        read_only: true
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: feature-${BRANCH}-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 30 feature-${BRANCH}-app
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_USERNAME=${DOCKER_USERNAME}
+      - WATCHTOWER_PASSWORD=${DOCKER_PASSWORD} 
