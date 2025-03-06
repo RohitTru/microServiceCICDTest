@@ -260,20 +260,19 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      - name: Build and Push Docker Image
-        run: |
-          # Build with multiple tags
-          docker build -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest \
-                      -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }} \
-                      -t rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.TIMESTAMP }} \
-                      --build-arg BUILD_VERSION=${{ env.VERSION }} \
-                      --build-arg BUILD_TIMESTAMP=${{ env.TIMESTAMP }} \
-                      "$APP_DIR"
-          
-          # Push all tags
-          docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:latest
-          docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.VERSION }}
-          docker push rohittru/microservicecicdtest_${{ env.BRANCH_NAME }}:${{ env.TIMESTAMP }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./app-template/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:${{ env.BRANCH_NAME }}
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:latest
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache,mode=max
 
       - name: Clean Up Workspace After Build
         run: |
@@ -745,11 +744,12 @@ jobs:
           file: ./app-template/Dockerfile
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.REPO_NAME }}_${{ env.BRANCH_NAME }}:latest
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:${{ env.BRANCH_NAME }}
+            ${{ env.DOCKER_REGISTRY }}/microservicecicidtest:latest
           build-args: |
             PYTHON_VERSION=${{ env.PYTHON_VERSION }}
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.REPO_NAME }}_${{ env.BRANCH_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.REPO_NAME }}_${{ env.BRANCH_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/microservicecicidtest:buildcache,mode=max
 
       - name: Create .env file
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feature-')
